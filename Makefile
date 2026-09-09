@@ -37,8 +37,9 @@ help:
 	@echo
 	@echo "常用变量: MIRROR=cn|official  APT_MIRROR=<镜像>  KERNEL_VER=  UBOOT_REF="
 
+APT_MIRROR ?= archive.ubuntu.com
 image:
-	docker build -t $(IMAGE) -f docker/Dockerfile docker/
+	docker build --build-arg APT_MIRROR=$(APT_MIRROR) -t $(IMAGE) -f docker/Dockerfile docker/
 
 shell:
 	$(RUN)
