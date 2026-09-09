@@ -67,4 +67,4 @@ rm -f "${BOOT_IMG}"
 log "SD 卡镜像打包完成: ${IMG}"
 fdisk -l "${IMG}" | tail -4
 ls -lh "${IMG_DIR}"
-log "部署: make flash DEV=/dev/diskN   (macOS 用 diskutil list 查看设备号)"
+log "部署: make flash DEV=/dev/diskN (macOS) 或 DEV=/dev/sdX (Linux/WSL2), 详见 README"

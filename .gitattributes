@@ -1,0 +1,23 @@
+# 本项目几乎所有文件最终都在 Linux 容器 / WSL 里被消费
+# (bash 脚本 / dtc / mkimage / kconfig ...), 因此:
+# Windows 检出统一保持 LF, 防止 core.autocrlf=true 把 *.sh/*.cmd 等
+# 转成 CRLF, 导致容器内脚本报错或配置解析错乱。
+* text=auto
+Makefile    text eol=lf
+*.sh        text eol=lf
+*.cmd       text eol=lf
+*.dts       text eol=lf
+*.dtsi      text eol=lf
+*.env       text eol=lf
+*.config    text eol=lf
+*.defconfig text eol=lf
+*.yml       text eol=lf
+*.md        text eol=lf
+Dockerfile  text eol=lf
+
+# 二进制产物 (均已 gitignore, 这里兜底防止被当文本处理)
+*.img       binary
+*.ext4      binary
+*.squashfs  binary
+*.scr       binary
+*.dtb       binary

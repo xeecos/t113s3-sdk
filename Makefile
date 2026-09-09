@@ -4,7 +4,7 @@
 #   make image   构建 Docker 编译镜像 (首次)
 #   make shell   进入编译容器
 #   make all     拉源码 + 编译 uboot/内核/rootfs + 打包 SD 镜像
-#   make flash DEV=/dev/disk4   烧写 SD 卡
+#   make flash DEV=/dev/disk4   烧写 SD 卡 (macOS / Linux / WSL2)
 # ============================================================
 SHELL := /bin/bash
 IMAGE ?= t113-sdk-builder:latest
@@ -30,7 +30,10 @@ help:
 	@echo "  make all              fetch + uboot + kernel + busybox + rootfs + pack"
 	@echo
 	@echo "  make flash DEV=/dev/diskN   烧写 SD 卡 (macOS)"
+	@echo "  make flash DEV=/dev/sdX     烧写 SD 卡 (Linux / WSL2)"
 	@echo "  make clean / distclean      清理输出 / 连源码一起清理"
+	@echo
+	@echo "Windows 宿主: 在 WSL2 中运行本项目 (安装与烧写见 docs/windows.md)"
 	@echo
 	@echo "常用变量: MIRROR=cn|official  APT_MIRROR=<镜像>  KERNEL_VER=  UBOOT_REF="
 
@@ -69,8 +72,16 @@ pack-spi:
 
 all: fetch uboot kernel busybox rootfs pack
 
+# 烧写按宿主系统分发:
+#   macOS  -> scripts/flash-sd.sh      (diskutil)
+#   Linux  -> scripts/flash-linux.sh   (含 WSL2, 需先 usbipd 透传读卡器)
+#   Windows 原生 (Git Bash/MINGW) -> 引导去 WSL2
 flash:
-	bash scripts/flash-sd.sh $(DEV)
+	@uname_s="$$(uname -s)"; case "$$uname_s" in \
+	  Darwin) bash scripts/flash-sd.sh $(DEV) ;; \
+	  Linux)  bash scripts/flash-linux.sh $(DEV) ;; \
+	  *) echo -e "Windows 宿主请勿直接在 PowerShell/Git Bash 烧写,\n请进入 WSL2 后运行: make flash DEV=/dev/sdX  (详见 docs/windows.md)"; exit 1 ;; \
+	esac
 
 clean:
 	rm -rf out

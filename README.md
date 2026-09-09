@@ -2,17 +2,19 @@
 
 基于 Docker 的一站式 [Allwinner T113-S3](https://linux-sunxi.org/T113-s3) 编译环境
 (T113-i 同 die, 可直接复用): 主线 U-Boot + 主线 Linux (6.6 LTS) + busybox/Buildroot
-根文件系统, 一条命令打出可启动的 SD 卡镜像与 SPI NOR 镜像, 并附带 macOS 烧写脚本。
+根文件系统, 一条命令打出可启动的 SD 卡镜像与 SPI NOR 镜像, 并附带 macOS /
+Linux / Windows(WSL2) 烧写脚本。
 
 > 适配 Apple Silicon / Intel Mac (colima 或 Docker Desktop 均可), 同样适用于
-> Linux / Windows(WSL2) 上的 Docker。需要编译全志**官方 SDK** (Longan/Tina, 仅
-> 支持 x86_64) 的见 [docs/vendor-sdk.md](docs/vendor-sdk.md)。
+> Linux 与 Windows(WSL2 + Docker Engine, 见 [docs/windows.md](docs/windows.md))。
+> 需要编译全志**官方 SDK** (Longan/Tina, 仅支持 x86_64) 的见
+> [docs/vendor-sdk.md](docs/vendor-sdk.md)。
 
 ## 环境要求
 
 | 组件 | 说明 |
 |------|------|
-| Docker | macOS 推荐 [colima](https://github.com/abiosoft/colima) + `brew install docker docker-compose` |
+| Docker | macOS 推荐 [colima](https://github.com/abiosoft/colima) + `brew install docker docker-compose`; Windows 见 [docs/windows.md](docs/windows.md) (WSL2 + Docker Engine, 无需 Docker Desktop) |
 | 磁盘 | ≥ 30 GB 空闲 (源码 ~2 GB + 编译产物 ~5 GB, 镜像另有余量) |
 | 网络 | 拉取源码; 国内网络已内置 TUNA/Gitee 镜像 (`MIRROR=cn`) |
 
@@ -28,7 +30,8 @@ colima start --cpu 6 --memory 10 --disk 80
 make image          # 1. 构建 Docker 编译镜像 (首次, 约 5 分钟)
 make all            # 2. 拉源码 + 编译 uboot/内核/busybox/rootfs + 打包镜像
                     #    (内核编译约 15~40 分钟, 视机器而定)
-make flash DEV=/dev/disk4   # 3. 插入 SD 卡, 烧写 (diskutil list 查设备号)
+make flash DEV=/dev/disk4   # 3. 插入 SD 卡, 烧写 (macOS 用 /dev/diskN;
+                            #    Linux/WSL2 用 /dev/sdX, lsblk 查设备号)
 ```
 
 SD 卡插到 T113-S3 上电启动, 调试串口 **UART3 (PB6/PB7), 115200 8N1**:
@@ -80,7 +83,8 @@ t113-sdk/
 │   ├── images/t113-sdcard.img   # SD 卡镜像
 │   ├── images/t113-spi.img      # SPI NOR 镜像
 │   └── ...
-└── docs/vendor-sdk.md       # 全志官方 SDK (Longan/Tina) 的 Docker 用法
+├── docs/vendor-sdk.md       # 全志官方 SDK (Longan/Tina) 的 Docker 用法
+└── docs/windows.md          # Windows (WSL2 + Docker Engine) 安装 / 烧写指南
 ```
 
 ## 板级适配 (换成你的 T113-S3 板子)
@@ -174,7 +178,11 @@ KERNEL_DTS=board make kernel  # 临时切换板级 DTS (auto/board/<名字>)
 
 - **macOS**: `make flash DEV=/dev/disk4` (脚本会拒绝内置磁盘、先卸载再用 raw
   设备写入并自动弹出)
-- **Linux**: `dd if=out/images/t113-sdcard.img of=/dev/sdX bs=4M conv=fsync status=progress`
+- **Linux / WSL2**: `make flash DEV=/dev/sdX` (需要时自动 `sudo`, 带防呆检查;
+  手动等价命令: `dd if=out/images/t113-sdcard.img of=/dev/sdX bs=4M conv=fsync status=progress`)
+- **Windows**: 在 WSL2 里按上一条执行 (SD 读卡器需先用 usbipd 透传), 或直接在
+  Windows 侧用 Rufus 等图形工具烧 `out\images\t113-sdcard.img`;
+  完整步骤见 [docs/windows.md](docs/windows.md)
 
 ## 常见问题
 

@@ -3,6 +3,10 @@
 全志官方 SDK (Longan 为 buildroot 系, Tina 为 OpenWrt 系) 的构建工具链**只支持
 x86_64 Linux**。在 Apple Silicon Mac 上有两个选择:
 
+> Windows 用户: WSL2 (amd64 Ubuntu) 本身就满足 x86_64 Linux 要求, Docker 环境
+> 装好后直接照本页步骤执行即可, 无需任何模拟。Docker 安装见
+> [windows.md](windows.md)。
+
 ## 方案 A: x86_64 容器 + QEMU 模拟 (本机可用, 慢)
 
 本机 colima 已带 `qemu-x86_64` 模拟器 (可用 `colima` 输出中的 emulators 确认)。
@@ -46,5 +50,6 @@ docker run --rm -it -v "$PWD":/work -w /work t113-sdk-builder:amd64 bash
 
 官方 `pack` 出的镜像 (通常含 PhoenixSuit 格式) 与本环境打的 SD 卡镜像不同:
 - SD 卡启动: 用 SDK 的 `dd` 镜像直接烧, 或 PhoenixCard 选"启动卡"
-- 本环境的 `scripts/flash-sd.sh` 同样适用于任何 raw 镜像:
-  `IMG=vendor/out/t113_linux_xxx.img make flash DEV=/dev/disk4`
+- 本环境的烧写脚本同样适用于任何 raw 镜像 (macOS 用 `scripts/flash-sd.sh`,
+  Linux/WSL2 用 `scripts/flash-linux.sh`):
+  `IMG=vendor/out/t113_linux_xxx.img make flash DEV=/dev/sdX`
