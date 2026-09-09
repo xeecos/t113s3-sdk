@@ -1,6 +1,6 @@
 # T113-S3 Docker 编译环境
 
-基于 Docker 的一站式 [Allwinner T113-S3](https://linux-sunxi.org/T113-s3) 编译环境
+基于 Docker 的一站式 [Allwinner T113-S3](https://linux-sunxi.org/T113-s3) / [MangoPi MQ Dual](https://mangopi.org/mangopi_mq) 编译环境
 (T113-i 同 die, 可直接复用): 主线 U-Boot + 主线 Linux (6.6 LTS) + busybox/Buildroot
 根文件系统, 一条命令打出可启动的 SD 卡镜像与 SPI NOR 镜像, 并附带 macOS 烧写脚本。
 
