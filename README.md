@@ -143,40 +143,56 @@ make rootfs         # 组装 rootfs 前会自动先编译并装入 apps/
 T113-S3 的 SPI0 (PC2~PC5) 已全线打通: 内核 (MTD + SPI-NOR, `/dev/mtd*`)、
 U-Boot (`sf probe/read/write/erase`)、镜像打包与 SD 卡一键更新脚本。
 
-### 布局 (16M NOR 为例, 可改 SPI_FLASH_SIZE_MB=32)
+### 布局 (16M/32M NOR, 用 SPI_FLASH_SIZE_MB 指定容量)
+
+内核 6.6 的 zImage 已约 10.5M (10M 分区放不下), 内核分区定为 12M,
+剩余空间全部给 rootfs:
 
 | 偏移 | 大小 | 内容 |
 |------|------|------|
 | 0x000000 | 512K | U-Boot (SPL + U-Boot, BootROM 从 0 地址引导) |
 | 0x080000 | 64K  | 设备树 `sun8i-t113-s3.dtb` |
-| 0x100000 | 10M  | `zImage` |
-| 0xB00000 | 剩余 | `rootfs.squashfs` (可选, `SPI_ROOTFS=1`) |
+| 0x100000 | 12M  | `zImage` |
+| 0xD00000 | 剩余 | `rootfs.squashfs` (只读根文件系统) |
+
+- **32M NOR**: rootfs 区 ~19M, 最小 busybox 系统 squashfs 后约 1.3M, 装
+  系统 + 应用绰绰有余 (推荐)
+- **16M NOR**: rootfs 区仅 ~3M, 只够最小系统, 应用多了建议换 32M
 
 ```bash
-make pack-spi                       # 生成 out/images/t113-spi.img + spi-update.scr
-SPI_ROOTFS=1 make pack-spi          # 全 NOR: 连 squashfs 只读 rootfs 一起打包
+SPI_ROOTFS=1 SPI_FLASH_SIZE_MB=32 make pack-spi   # 生成全 NOR 镜像
 ```
 
-### 三种典型用法
+`SPI_ROOTFS` 默认已是 1; 板载 32M NOR 的话把 `config/board.env` 里
+`SPI_FLASH_SIZE_MB` 默认值改成 32 即可 (pack-spi 会按容量算 rootfs 分区,
+rootfs.squashfs 超限会直接报错)。
 
-1. **SD 启动 + SPI 做存储**: 直接用 SD 镜像。板级 DTS 已含
-   `flash@0 (jedec,spi-nor)` 节点, Linux 里表现为 `/dev/mtd0`,
-   可用 busybox `flashcp`/`mtd_debug` 读写。
-2. **SPI 放内核, SD 放根文件系统** (默认, U-Boot 已内置兜底启动):
-   U-Boot bootcmd 顺序 = SD 卡 distro 启动 → 失败后 `sf read` 从 SPI
-   加载内核 (root 仍为 `/dev/mmcblk0p2`)。更新 SPI 里的内核:
-   把新 `zImage`/`sun8i-t113-s3.dtb` 拷进 SD 卡 boot 分区, U-Boot 命令行执行:
+### 默认架构: 全 NOR 系统 + SD 卡用户数据
 
+U-Boot 启动顺序 = SPI flash 全 NOR 系统优先 (bootcmd 内置 squashfs
+bootargs 与 mtdparts), SPI 启动失败才回落到 SD 卡 distro 启动:
+
+1. **SPI flash (只读系统)**: U-Boot + 内核 + squashfs 只读系统/程序
+   (`apps/` 的应用自动装入 /usr/bin, 见上文「用户应用 (apps)」)。
+2. **SD 卡 (用户数据)**: 全 NOR 启动后 rcS 自动把 SD 卡 **p1** 挂到
+   `/data` (ext4/vfat 均可, 无卡或没有 p1 分区则跳过)。首次准备数据卡:
+
+   ```bash
+   # Linux 宿主机: SD 卡分一个区并格式化 (ext4 或 vfat 任选)
+   sudo mkfs.ext4 -L userdata /dev/sdX1
+   # 或: sudo mkfs.vfat -n userdata /dev/sdX1
    ```
-   mmc dev 0
-   fatload mmc 0:1 ${scriptaddr} spi-update.scr
-   source ${scriptaddr}
-   ```
 
-3. **全 NOR 启动** (`SPI_ROOTFS=1`): rootfs 为 squashfs 只读系统, 内核
-   bootargs 需加分区表 (pack-spi 完成时会打印):
-   `mtdparts=spi0.0:512k(uboot)ro,64k(dtb),10m(kernel),-(rootfs)
-   root=/dev/mtdblock3 rootfstype=squashfs`。
+   开机后 `mount | grep /data` 确认, 用户文件放 `/data` 即落在 SD 卡上。
+3. **开发 / 恢复**: `make pack` 的 t113-sdcard.img 不变, 在 NOR 未烧写或
+   系统损坏时插上即可从 SD 启动 (boot.scr 自己指定 root=/dev/mmcblk0p2,
+   不会动 /data)。更新 SPI 里的内核/rootfs: 把 zImage/dtb/rootfs.squashfs
+   拷进开发 SD 卡 boot 分区, U-Boot 命令行执行 `source spi-update.scr`
+   (脚本见 board/spi-update.cmd)。
+
+> 旧的「SPI 放内核 + SD 放 rootfs」方案已被全 NOR 取代 (bootcmd 现在
+> NOR 优先且默认 bootargs 指向 mtdblock3 的 squashfs, 10M 内核分区也
+> 已放不下当前 zImage)。
 
 ### 其他烧写途径
 

@@ -12,7 +12,7 @@ log "组装最小根文件系统 -> ${ROOTFS_DIR}"
 STAGE_DIR="/tmp/t113-rootfs"
 rm -rf "${STAGE_DIR}"
 ROOTFS_DIR="${STAGE_DIR}"
-mkdir -p "${ROOTFS_DIR}"/{bin,sbin,etc/init.d,proc,sys,dev,pts,tmp,var/log,usr/bin,usr/sbin,lib,root,mnt,home}
+mkdir -p "${ROOTFS_DIR}"/{bin,sbin,etc/init.d,proc,sys,dev,pts,tmp,var/log,usr/bin,usr/sbin,lib,root,mnt,home,data}
 
 install -m 755 "${OUT_DIR}/busybox/busybox" "${ROOTFS_DIR}/bin/busybox"
 
@@ -53,6 +53,20 @@ hostname t113-s3
 echo
 echo "Welcome to T113-S3 (busybox minimal rootfs)"
 echo
+
+# ---- 全 NOR 模式 (root=/dev/mtdblock3): SD 卡 p1 作为用户数据盘 -> /data ----
+# SD 启动模式 (/dev/mmcblk0p2 是系统盘) 不挂载, 避免误挂系统分区
+if grep -q mtdblock /proc/cmdline; then
+  if [ -b /dev/mmcblk0 ]; then
+    i=0
+    while [ $i -lt 20 ] && [ ! -b /dev/mmcblk0p1 ]; do i=$((i + 1)); sleep 0.1; done
+    if [ -b /dev/mmcblk0p1 ] && mount /dev/mmcblk0p1 /data 2>/dev/null; then
+      echo "SD user data (/dev/mmcblk0p1) mounted at /data"
+    else
+      echo "SD present but no mountable p1 partition (mkfs.ext4/vfat first?)"
+    fi
+  fi
+fi
 EOF
 chmod 755 "${ROOTFS_DIR}/etc/init.d/rcS"
 
