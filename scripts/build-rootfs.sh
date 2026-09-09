@@ -25,6 +25,15 @@ for a in ${APPLETS}; do
 done
 ln -sf ../bin/busybox "${ROOTFS_DIR}/sbin/init"
 
+# ---- 用户应用 (apps/): 交叉编译后装入 /usr/bin ----
+bash "$(dirname "$0")/build-apps.sh"
+for adir in "${OUT_DIR}"/apps/*/; do
+  [ -d "${adir}" ] || continue
+  name="$(basename "${adir}")"
+  install -m 755 "${adir}/${name}" "${ROOTFS_DIR}/usr/bin/${name}"
+  log "装入应用: /usr/bin/${name}"
+done
+
 # ---- /etc ----
 cat > "${ROOTFS_DIR}/etc/inittab" <<'EOF'
 ::sysinit:/etc/init.d/rcS

@@ -28,7 +28,7 @@ colima start --cpu 6 --memory 10 --disk 80
 
 ```bash
 make image          # 1. 构建 Docker 编译镜像 (首次, 约 5 分钟)
-make all            # 2. 拉源码 + 编译 uboot/内核/busybox/rootfs + 打包镜像
+make all            # 2. 拉源码 + 编译 uboot/内核/busybox/apps/rootfs + 打包镜像
                     #    (内核编译约 15~40 分钟, 视机器而定)
 make flash DEV=/dev/disk4   # 3. 插入 SD 卡, 烧写 (macOS 用 /dev/diskN;
                             #    Linux/WSL2 用 /dev/sdX, lsblk 查设备号)
@@ -52,6 +52,7 @@ make fetch          # 拉取 U-Boot / Linux / busybox 源码
 make uboot          # 编译 U-Boot  -> out/uboot/
 make kernel         # 编译内核    -> out/images/zImage + *.dtb
 make busybox        # 编译 busybox -> out/busybox/
+make apps           # 编译 apps/ 用户应用 -> out/apps/ (rootfs 组装时自动执行)
 make rootfs         # 组装根文件系统 -> out/rootfs.ext4
 make pack           # 打包 SD 镜像 -> out/images/t113-sdcard.img
 make pack-spi       # 打包 SPI NOR 镜像 -> out/images/t113-spi.img
@@ -77,6 +78,7 @@ t113-sdk/
 │   ├── spi-update.cmd       # SD 卡 → SPI flash 更新脚本 (→ spi-update.scr)
 │   ├── dts/sun8i-t113-s3.dts      # 内核板级 DTS 模板 (按硬件修改)
 │   └── uboot-dts/sun8i-t113-s3.dts # U-Boot 板级 DTS (与内核 dtb 同名)
+├── apps/                    # 用户应用 (每个子目录一个应用, 见 hello 示例)
 ├── scripts/                 # 容器内编译脚本 + 宿主机烧写脚本
 ├── sources/                 # 拉取的源码 (make fetch 后出现)
 ├── out/                     # 全部编译产物
@@ -86,6 +88,26 @@ t113-sdk/
 ├── docs/vendor-sdk.md       # 全志官方 SDK (Longan/Tina) 的 Docker 用法
 └── docs/windows.md          # Windows (WSL2 + Docker Engine) 安装 / 烧写指南
 ```
+
+## 用户应用 (apps)
+
+`apps/` 下每个子目录一个应用, 用交叉工具链静态编译, 组装 rootfs 时自动装入
+**/usr/bin** (板子串口里直接执行 `hello` 即可看到输出)。
+
+```bash
+make apps           # 只编译 apps/ (产物 out/apps/<name>/<name>)
+make rootfs         # 组装 rootfs 前会自动先编译并装入 apps/
+```
+
+新增应用 = 新建 `apps/<name>/<name>.c` + `Makefile`, 直接复制 `apps/hello`
+改名字即可, 约定:
+
+- Makefile 用 `CROSS_COMPILE` (config/board.env 里已导出) 交叉编译;
+- **必须静态链接** (`-static`): busybox 最小 rootfs 不带 glibc 动态库;
+- 产物写到 `OUTPUT` 指向的 out/apps/ 下, 不要留在源码树。
+
+> 用 `make rootfs-buildroot` (Buildroot) 时走 Buildroot 软件包机制,
+> 不会自动装入 apps/ 下的应用。
 
 ## 板级适配 (换成你的 T113-S3 板子)
 

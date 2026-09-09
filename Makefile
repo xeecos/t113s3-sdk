@@ -19,7 +19,7 @@ else
 RUN   := docker compose run --rm t113-build
 endif
 
-.PHONY: help image shell info fetch uboot kernel busybox rootfs rootfs-buildroot pack pack-spi all clean distclean flash
+.PHONY: help image shell info fetch uboot kernel busybox apps rootfs rootfs-buildroot pack pack-spi all clean distclean flash
 
 help:
 	@echo "T113-S3 Docker 编译环境"
@@ -32,11 +32,12 @@ help:
 	@echo "  make uboot            编译 U-Boot"
 	@echo "  make kernel           编译内核 (zImage + dtb)"
 	@echo "  make busybox          交叉编译静态 busybox"
+	@echo "  make apps             交叉编译 apps/ 用户应用 (hello 等, 装入 rootfs /usr/bin)"
 	@echo "  make rootfs           组装最小根文件系统 (busybox)"
 	@echo "  make rootfs-buildroot 用 Buildroot 构建完整根文件系统"
 	@echo "  make pack             打包 SD 卡镜像 out/images/t113-sdcard.img"
 	@echo "  make pack-spi         打包 SPI NOR 镜像 out/images/t113-spi.img"
-	@echo "  make all              fetch + uboot + kernel + busybox + rootfs + pack"
+	@echo "  make all              fetch + uboot + kernel + busybox + apps + rootfs + pack"
 	@echo
 	@echo "  make flash DEV=/dev/diskN   烧写 SD 卡 (macOS)"
 	@echo "  make flash DEV=/dev/sdX     烧写 SD 卡 (Linux / WSL2)"
@@ -70,6 +71,9 @@ kernel:
 busybox:
 	$(RUN) bash scripts/build-busybox.sh
 
+apps:
+	$(RUN) bash scripts/build-apps.sh
+
 rootfs:
 	$(RUN) bash scripts/build-rootfs.sh
 
@@ -82,7 +86,7 @@ pack:
 pack-spi:
 	$(RUN) bash scripts/pack-spi.sh
 
-all: fetch uboot kernel busybox rootfs pack
+all: fetch uboot kernel busybox apps rootfs pack
 
 # 烧写按宿主系统分发:
 #   macOS  -> scripts/flash-sd.sh      (diskutil)
