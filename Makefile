@@ -8,7 +8,16 @@
 # ============================================================
 SHELL := /bin/bash
 IMAGE ?= t113-sdk-builder:latest
+# 宿主机代理 (下载慢/失败时): make <目标> PROXY=http://192.168.5.2:7890
+#   macOS colima: 192.168.5.2 指向宿主机 127.0.0.1 (与 dockerd --host-gateway-ip 一致)
+#   Docker Desktop: http://host.docker.internal:7890 ; Linux 容器: 127.0.0.1
+PROXY ?=
+NO_PROXY ?= localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,.tuna.tsinghua.edu.cn,.tsinghua.edu.cn,.gitee.com
+ifneq ($(PROXY),)
+RUN   := docker compose run --rm -e http_proxy=$(PROXY) -e https_proxy=$(PROXY) -e no_proxy=$(NO_PROXY) t113-build
+else
 RUN   := docker compose run --rm t113-build
+endif
 
 .PHONY: help image shell info fetch uboot kernel busybox rootfs rootfs-buildroot pack pack-spi all clean distclean flash
 
@@ -35,11 +44,13 @@ help:
 	@echo
 	@echo "Windows 宿主: 在 WSL2 中运行本项目 (安装与烧写见 docs/windows.md)"
 	@echo
-	@echo "常用变量: MIRROR=cn|official  APT_MIRROR=<镜像>  KERNEL_VER=  UBOOT_REF="
+	@echo "常用变量: MIRROR=cn|official  APT_MIRROR=<镜像>  PROXY=<宿主机代理>  KERNEL_VER=  UBOOT_REF="
 
 APT_MIRROR ?= archive.ubuntu.com
 image:
-	docker build --build-arg APT_MIRROR=$(APT_MIRROR) -t $(IMAGE) -f docker/Dockerfile docker/
+	docker build --build-arg APT_MIRROR=$(APT_MIRROR) \
+	  $(if $(PROXY),--build-arg http_proxy=$(PROXY) --build-arg https_proxy=$(PROXY) --build-arg no_proxy=$(NO_PROXY),) \
+	  -t $(IMAGE) -f docker/Dockerfile docker/
 
 shell:
 	$(RUN)

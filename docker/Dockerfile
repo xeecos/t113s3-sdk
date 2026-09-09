@@ -8,6 +8,11 @@ FROM ubuntu:22.04
 
 # 中国网络环境可用: make image APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
 ARG APT_MIRROR=archive.ubuntu.com
+# 构建期下载走宿主机代理 (下载慢/失败时): make image PROXY=http://192.168.5.2:7890
+# (macOS colima 的宿主机代理地址; Docker Desktop 用 http://host.docker.internal:7890)
+ARG http_proxy=
+ARG https_proxy=
+ARG no_proxy=
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Shanghai \

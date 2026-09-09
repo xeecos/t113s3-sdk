@@ -168,6 +168,9 @@ SPI_ROOTFS=1 make pack-spi          # 全 NOR: 连 squashfs 只读 rootfs 一起
 ```bash
 make all MIRROR=cn            # 用 TUNA/Gitee 镜像拉源码 (默认 cn)
 make image APT_MIRROR=mirrors.tuna.tsinghua.edu.cn   # apt 走国内源
+PROXY=http://192.168.5.2:7890 make fetch            # 下载走宿主机代理 (colima)
+make image PROXY=http://192.168.5.2:7890            # 构建镜像时也走代理
+# Docker Desktop 用 http://host.docker.internal:7890; Linux 容器用 http://127.0.0.1:7890
 KERNEL_VER=6.12.30 make fetch # 临时换内核版本 (tarball 版本号)
 KERNEL_DTS=board make kernel  # 临时切换板级 DTS (auto/board/<名字>)
 ```
