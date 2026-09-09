@@ -1,0 +1,81 @@
+// ============================================================
+// T113-S3 板级 DTS 模板 —— 按实际硬件修改
+//
+// 使用方法: config/board.env 中 KERNEL_DTS=board 后运行 make kernel
+//
+// T113-S3 (SiP 封装, 内置 128M DDR3): PB8/PB9 被 SiP 内部占用,
+// 调试串口为 UART3 @ PB6(TX)/PB7(RX) -> console=ttyS3
+//
+// 引脚速查 (sunxi-d1s-t113.dtsi):
+//   spi0  : PC2~PC5           (spi0_pins)
+//   uart3 : PB6/PB7           (uart3_pb_pins)
+//   mmc0  : 默认 mmc0_pins, 卡检测 PF6
+// ============================================================
+/dts-v1/;
+#include "sun8i-t113s.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	model = "T113-S3 Custom Board";
+	compatible = "vendor,t113-s3-board", "allwinner,sun8i-t113s", "allwinner,sun8i";
+
+	aliases {
+		serial3 = &uart3;
+	};
+
+	chosen {
+		stdout-path = "serial3:115200n8";
+	};
+
+	/* 按需添加: gpio-leds, gpio-keys, regulators ... */
+};
+
+/* 调试串口: UART3 @ PB6(TX)/PB7(RX) */
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart3_pb_pins>;
+	status = "okay";
+};
+
+/* TF 卡槽 */
+&mmc0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc0_pins>;
+	bus-width = <4>;
+	cd-gpios = <&pio 5 6 GPIO_ACTIVE_LOW>; /* PF6, 按板子修改 */
+	disable-wp;
+	status = "okay";
+};
+
+/* SPI NOR flash -> /dev/mtd0 (内核已开 MTD_SPI_NOR) */
+&spi0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi0_pins>;
+	status = "okay";
+
+	flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <40000000>;
+	};
+};
+
+/* 千兆以太网 (RMII/RGMII 视 PHY 而定) */
+/*
+&emac {
+	status = "okay";
+	phy-mode = "rmii";
+	fixed-link {
+		speed = <100>;
+		full-duplex;
+	};
+};
+*/
+
+/* USB OTG */
+/*
+&usb_otg {
+	status = "okay";
+	dr_mode = "otg";
+};
+*/

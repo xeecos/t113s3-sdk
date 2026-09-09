@@ -1,0 +1,66 @@
+// ============================================================
+// T113-S3 U-Boot 板级设备树 (U-Boot 专用, 精简为启动必需外设)
+//
+// build-uboot.sh 在 UBOOT_DTS=board (默认) 时将其复制进 U-Boot 源码树
+// 并设置 CONFIG_DEFAULT_DEVICE_TREE=sun8i-t113-s3
+//
+// T113-S3 (SiP 封装): PB8/PB9 被 SiP 内部占用, 调试串口为
+// UART3 @ PB6(TX)/PB7(RX) -> console/stdout-path = serial3
+//
+// 引脚速查 (sunxi-d1s-t113.dtsi):
+//   spi0  : PC2~PC5           (spi0_pins)
+//   uart3 : PB6/PB7           (uart3_pb_pins)
+//   mmc0  : 默认 mmc0_pins, 卡检测 PF6
+// 按实际硬件修改后再 make uboot
+// ============================================================
+/dts-v1/;
+
+#include "sun8i-t113s.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	model = "T113-S3 Custom Board (U-Boot)";
+	compatible = "vendor,t113-s3", "allwinner,sun8i-t113s";
+
+	aliases {
+		serial3 = &uart3;
+		mmc0 = &mmc0;
+		spi0 = &spi0;
+	};
+
+	chosen {
+		stdout-path = "serial3:115200n8";
+	};
+};
+
+/* 调试串口: UART3 @ PB6(TX)/PB7(RX) */
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart3_pb_pins>;
+	status = "okay";
+};
+
+/* TF 卡槽 */
+&mmc0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc0_pins>;
+	bus-width = <4>;
+	/* 卡检测引脚按板子修改; 焊死的卡座可删除 cd-gpios 并加 non-removable */
+	cd-gpios = <&pio 5 6 GPIO_ACTIVE_LOW>; /* PF6 */
+	disable-wp;
+	status = "okay";
+};
+
+/* SPI NOR flash (使能 U-Boot sf probe / 从 SPI 启动) */
+&spi0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi0_pins>;
+	status = "okay";
+
+	flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		/* 16/32MB NOR 常见; 低于此频率最稳, 可按 flash 规格上调 */
+		spi-max-frequency = <40000000>;
+	};
+};
