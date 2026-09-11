@@ -51,16 +51,54 @@
 	status = "okay";
 };
 
-/* SPI NOR flash (使能 U-Boot sf probe / 从 SPI 启动) */
+/* SPI flash (SPI NAND 走 U-Boot 的 MTD 层, 见下) */
 &spi0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&spi0_pins>;
 	status = "okay";
 
+	/* Winbond W25N02KVZEIR SPI NAND (2Gbit/256MB): U-Boot 侧走 MTD 层,
+	 * 用 mtd list / mtd read <分区名> / mtd write 操作 (sf 命令只认 NOR)。
+	 * 分区表必须与内核 DTS 和 config/board.env 完全一致 */
 	flash@0 {
-		compatible = "jedec,spi-nor";
+		compatible = "spi-nand";
 		reg = <0>;
-		/* 16/32MB NOR 常见; 低于此频率最稳, 可按 flash 规格上调 */
 		spi-max-frequency = <40000000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "uboot";
+				reg = <0x0000000 0x0100000>;
+			};
+
+			partition@100000 {
+				label = "dtb";
+				reg = <0x0100000 0x0040000>;
+			};
+
+			partition@140000 {
+				label = "kernel";
+				reg = <0x0140000 0x1000000>;
+			};
+
+			partition@1140000 {
+				label = "rootfs";
+				reg = <0x1140000 0x0eec0000>;
+			};
+		};
 	};
+
+	/* SPI NOR 板:
+	 * flash@0 {
+	 *	compatible = "jedec,spi-nor";
+	 *	reg = <0>;
+	 *	spi-max-frequency = <40000000>;
+	 * };
+	 */
 };

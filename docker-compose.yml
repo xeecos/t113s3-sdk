@@ -24,7 +24,12 @@ services:
       - UBOOT_DTS=${UBOOT_DTS:-}
       - UBOOT_DEFCONFIG=${UBOOT_DEFCONFIG:-}
       - SPI_ROOTFS=${SPI_ROOTFS:-}
+      # SPI flash 类型/容量/分区 (默认 nand 256M, 见 config/board.env)
+      - SPI_FLASH_TYPE=${SPI_FLASH_TYPE:-}
       - SPI_FLASH_SIZE_MB=${SPI_FLASH_SIZE_MB:-}
+      - SPI_UBOOT_SIZE=${SPI_UBOOT_SIZE:-}
+      - SPI_DTB_SIZE=${SPI_DTB_SIZE:-}
+      - SPI_KERNEL_SIZE=${SPI_KERNEL_SIZE:-}
     tty: true
     stdin_open: true
     # Apple Silicon 默认以 linux/arm64 原生运行(快)。

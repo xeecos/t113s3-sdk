@@ -43,6 +43,8 @@ case "${KERNEL_DTS}" in
     if ! grep -q "${DTS_NAME}\.dtb" "${DTS_DIR}/allwinner/Makefile"; then
       echo "dtb-y += ${DTS_NAME}.dtb" >> "${DTS_DIR}/allwinner/Makefile"
     fi
+    spi_layout
+    check_dts_partitions "${ROOT_DIR}/board/dts/${DTS_NAME}.dts"
     ;;
   *)
     DTS_NAME="${KERNEL_DTS}"
