@@ -27,18 +27,77 @@ warn() { echo -e "\033[33m[warn ]\033[0m $*"; }
 die()  { echo -e "\033[31m[error]\033[0m $*" >&2; exit 1; }
 require_file() { [ -f "$1" ] || die "缺少产物 $1, 请先运行对应的 make 目标"; }
 
-JOBS="$(nproc)"
+# 并行任务数: make JOBS=8 或 JOBS=8 bash scripts/build-kernel.sh 可覆盖
+# (默认 nproc; WSL 里 CPU 给得多但内存有限时, 全核并行的内核编译容易 OOM)
+JOBS="${JOBS:-$(nproc)}"
+
+# ---------- 大小写不敏感文件系统的防护 ----------
+# 源码树里存在仅大小写不同的文件名 (内核 include/uapi/linux/netfilter/ 下就有
+# xt_CONNMARK.h 与 xt_connmark.h, xt_MARK.h 与 xt_mark.h 等)。在大小写不敏感的
+# 文件系统上 (WSL 挂载的 Windows 盘 /mnt/d), 解压/检出时它们会落成同一个文件,
+# 悄悄少掉一个, 之后表现为"莫名缺少头文件"之类的怪错误。
+# 做法: 解压/克隆前先取出冲突名单, 完成后逐个核对目录里的真实文件名。
+
+# 目录所在文件系统是否大小写不敏感 (建两个仅大小写不同的临时文件来探)
+fs_case_insensitive() { # $1=目录
+  local a="$1/.t113-CaseProbe.$$" b="$1/.t113-caseprobe.$$"
+  : > "${a}" 2>/dev/null || return 1
+  if [ -e "${b}" ]; then
+    rm -f "${a}" "${b}"
+    return 0
+  fi
+  rm -f "${a}"
+  return 1
+}
+
+# 冲突名单 —— 只有大小写不敏感的文件系统才需要算 (大小写敏感时输出空名单, 不影响性能)
+case_dups_of_tarball() { # $1=压缩包 $2=tar 压缩选项 (J=xz, j=bz2)
+  fs_case_insensitive "${SRC_DIR}" || return 0
+  tar -t"$2"f "$1" 2>/dev/null | grep -v '/$' | sed 's|^[^/]*/||' \
+    | LC_ALL=C sort -f | LC_ALL=C uniq -Di
+}
+
+case_dups_of_git() { # $1=git 仓库目录
+  fs_case_insensitive "${SRC_DIR}" || return 0
+  git -C "$1" ls-tree -r --name-only HEAD 2>/dev/null \
+    | LC_ALL=C sort -f | LC_ALL=C uniq -Di
+}
+
+# 核对解压/检出结果: $1=源码根目录 $2=冲突名单文件 (名单为空或不存在则跳过)
+# 注意: 不能直接用 [ -e ] 判断 —— 在大小写不敏感的文件系统上两个名字都"存在",
+# 只有比对目录里的真实文件名才能发现被覆盖丢失的那个。
+case_dup_verify() {
+  local root="$1" list="$2" name dir base lost=""
+  [ -s "${list}" ] || return 0
+  while IFS= read -r name; do
+    [ -n "${name}" ] || continue
+    dir="$(dirname "${name}")"; base="$(basename "${name}")"
+    ls -1 "${root}/${dir}" 2>/dev/null | grep -qxF "${base}" || lost="${lost}  ${name}"
+  done < "${list}"
+  if [ -z "${lost}" ]; then
+    return 0
+  fi
+  warn "文件系统大小写不敏感, 这些文件在解压/检出时被同名的(仅大小写不同)文件覆盖丢失了:"
+  printf '%s\n' "${lost}"
+  if [ "${ALLOW_CASE_INSENSITIVE:-0}" = 1 ]; then
+    warn "ALLOW_CASE_INSENSITIVE=1: 继续 (编译可能因缺文件失败)"
+    return 0
+  fi
+  die "把项目放到大小写敏感的文件系统上重试: WSL 里推荐 cd ~ && git clone <仓库> (见 docs/windows.md)"
+}
 
 # ---------- 源码仓库 (按 MIRROR 选择) ----------
+# 注: 清华镜像站只镜像了 kernel tarball 目录, 没有 git 服务
+# (mirrors.tuna.tsinghua.edu.cn/git/... 一律 404), 别再加回来。
+# 任一镜像克隆停滞会自动换下一个 (见 fetch-sources.sh 的停滞探测),
+# 想跳过国内镜像直接用官方源: MIRROR=official make fetch
 case "${MIRROR}" in
   cn)
     UBOOT_GIT_LIST=(
-      "https://mirrors.tuna.tsinghua.edu.cn/git/u-boot.git"
       "https://gitee.com/mirrors/u-boot.git"
       "https://source.denx.de/u-boot/u-boot.git"
     )
     BUILDROOT_GIT_LIST=(
-      "https://mirrors.tuna.tsinghua.edu.cn/git/buildroot.git"
       "https://gitee.com/mirrors/buildroot.git"
       "https://gitlab.com/buildroot.org/buildroot.git"
     )
@@ -50,11 +109,11 @@ case "${MIRROR}" in
   *)
     UBOOT_GIT_LIST=(
       "https://source.denx.de/u-boot/u-boot.git"
-      "https://mirrors.tuna.tsinghua.edu.cn/git/u-boot.git"
+      "https://gitee.com/mirrors/u-boot.git"
     )
     BUILDROOT_GIT_LIST=(
       "https://gitlab.com/buildroot.org/buildroot.git"
-      "https://mirrors.tuna.tsinghua.edu.cn/git/buildroot.git"
+      "https://gitee.com/mirrors/buildroot.git"
     )
     KERNEL_TARBALL_LIST=(
       "https://cdn.kernel.org/pub/linux/kernel/v6.x"

@@ -38,7 +38,7 @@ make pack-spi                       # 产出 out/images/t113-spi.img (256M)
 make pack                           # SD 卡镜像 (含 boot.scr / spi-nand-update.scr)
 ```
 
-容器里跑的话前面加 `make shell` 或直接用 `make <目标>`。
+直接 `make <目标>` 即可 (Linux / WSL2 原生工具链); 需要手动进编译环境用 `make shell`。
 
 > `make uboot` 会先把 `patches/uboot/0001-sunxi-spl-spi-nand.patch` 应用到
 > `sources/uboot` (已应用则跳过)。这个补丁给 SPL 加了 SPI NAND 读取支持

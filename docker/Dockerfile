@@ -1,5 +1,7 @@
 # T113-S3 交叉编译环境 (Ubuntu 22.04, 支持 arm64/amd64 双架构)
 #
+# 仅 macOS 需要这个镜像 (Linux / WSL2 请直接用原生工具链: make deps, 见 docs/windows.md)。
+#
 # 默认构建本机架构镜像 (Apple Silicon 上为 linux/arm64 原生, 编译速度快)。
 # 如需运行全志官方 x86_64 SDK (Longan/Tina), 用 amd64 构建:
 #   docker build --platform linux/amd64 -t t113-sdk-builder:amd64 -f docker/Dockerfile docker/
@@ -18,20 +20,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Shanghai \
     LANG=C.UTF-8
 
+# 包清单与 make deps 共用一份 (docker/packages.txt), 两边的编译环境保持一致
+COPY packages.txt /usr/local/share/t113-packages.txt
 RUN sed -i "s|archive.ubuntu.com|${APT_MIRROR}|g; s|security.ubuntu.com|${APT_MIRROR}|g" /etc/apt/sources.list \
     && apt-get update && apt-get install -y --no-install-recommends \
-        locales ca-certificates curl wget git \
-        build-essential gcc g++ make patch \
-        crossbuild-essential-armhf \
-        flex bison bc perl \
-        python3 python3-dev python3-setuptools python3-distutils python3-pip \
-        swig libssl-dev libncurses-dev libgnutls28-dev libelf-dev \
-        device-tree-compiler u-boot-tools \
-        cpio unzip rsync file xxd gettext texinfo lzop zstd xz-utils \
-        dosfstools mtools e2fsprogs parted util-linux fdisk kmod \
-        mtd-utils squashfs-tools \
-        qemu-user-static \
-        ccache sudo vim less tmux tree bash-completion \
+        $(grep -vE '^[[:space:]]*(#|$)' /usr/local/share/t113-packages.txt | tr '\n' ' ') \
     && locale-gen en_US.UTF-8 zh_CN.UTF-8 \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \

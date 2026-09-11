@@ -1,24 +1,26 @@
-# T113-S3 Docker 编译环境
+# T113-S3 一站式编译环境
 
-基于 Docker 的一站式 [Allwinner T113-S3](https://linux-sunxi.org/T113-s3) / [MangoPi MQ Dual](https://mangopi.org/mangopi_mq) 编译环境
+[Allwinner T113-S3](https://linux-sunxi.org/T113-s3) / [MangoPi MQ Dual](https://mangopi.org/mangopi_mq) 编译环境
 (T113-i 同 die, 可直接复用): 主线 U-Boot + 主线 Linux (6.6 LTS) + busybox/Buildroot
 根文件系统, 一条命令打出可启动的 SD 卡镜像与 SPI flash (NOR / NAND) 镜像, 并附带 macOS /
 Linux / Windows(WSL2) 烧写脚本。
 
-> 适配 Apple Silicon / Intel Mac (colima 或 Docker Desktop 均可), 同样适用于
-> Linux 与 Windows(WSL2 + Docker Engine, 见 [docs/windows.md](docs/windows.md))。
-> 需要编译全志**官方 SDK** (Longan/Tina, 仅支持 x86_64) 的见
-> [docs/vendor-sdk.md](docs/vendor-sdk.md)。
+> 默认用**宿主原生工具链**构建: Linux 与 Windows(WSL2 的 Ubuntu) 装一次依赖
+> (`make deps`) 后直接 `make all`, **不需要 Docker**; 只有 macOS 没有 Linux 工具链,
+> 才会回落到容器 (colima / Docker Desktop)。Windows 步骤见
+> [docs/windows.md](docs/windows.md); 需要编译全志**官方 SDK** (Longan/Tina,
+> 仅支持 x86_64) 的见 [docs/vendor-sdk.md](docs/vendor-sdk.md)。
 
 ## 环境要求
 
 | 组件 | 说明 |
 |------|------|
-| Docker | macOS 推荐 [colima](https://github.com/abiosoft/colima) + `brew install docker docker-compose`; Windows 见 [docs/windows.md](docs/windows.md) (WSL2 + Docker Engine, 无需 Docker Desktop) |
+| 宿主 | Linux 或 Windows 的 WSL2 (Ubuntu 22.04+): 原生构建, `make deps` 一次装齐依赖 (清单见 `docker/packages.txt`), **不需要 Docker** |
+| Docker | 仅 macOS 需要 (没有 Linux 工具链时自动启用): [colima](https://github.com/abiosoft/colima) + `brew install docker docker-compose`, 或 Docker Desktop |
 | 磁盘 | ≥ 30 GB 空闲 (源码 ~2 GB + 编译产物 ~5 GB, 镜像另有余量) |
 | 网络 | 拉取源码; 国内网络已内置 TUNA/Gitee 镜像 (`MIRROR=cn`) |
 
-colima 用户建议给足资源 (宿主 8 核 16G 为例):
+macOS (colima) 用户建议给足资源 (宿主 8 核 16G 为例):
 
 ```bash
 colima start --cpu 6 --memory 10 --disk 80
@@ -27,10 +29,10 @@ colima start --cpu 6 --memory 10 --disk 80
 ## 快速开始
 
 ```bash
-make image          # 1. 构建 Docker 编译镜像 (首次, 约 5 分钟)
-make all            # 2. 拉源码 + 编译 uboot/内核/busybox/apps/rootfs + 打包镜像
-                    #    (内核编译约 15~40 分钟, 视机器而定)
-make flash DEV=/dev/disk4   # 3. 插入 SD 卡, 烧写 (macOS 用 /dev/diskN;
+make deps                   # 1. 装编译依赖 (Linux / WSL2 首次一次; macOS 用 make image 建镜像)
+make all                    # 2. 拉源码 + 编译 uboot/内核/busybox/apps/rootfs + 打包镜像
+                            #    (内核编译约 15~40 分钟, 视机器而定)
+make flash DEV=/dev/sdX     # 3. 插入 SD 卡, 烧写 (macOS 用 /dev/diskN;
                             #    Linux/WSL2 用 /dev/sdX, lsblk 查设备号)
 ```
 
@@ -47,7 +49,7 @@ Welcome to T113-S3 (busybox minimal rootfs)
 也可以手动分步执行:
 
 ```bash
-make shell          # 进入容器
+make shell          # 进入编译 shell (原生模式: 项目目录里开 bash, 工具链变量已载入)
 make fetch          # 拉取 U-Boot / Linux / busybox 源码
 make uboot          # 编译 U-Boot  -> out/uboot/
 make kernel         # 编译内核    -> out/images/zImage + *.dtb
@@ -62,10 +64,11 @@ make pack-spi       # 打包 SPI flash 镜像 -> out/images/t113-spi.img (默认
 
 ```
 t113-sdk/
-├── Makefile                 # 所有操作入口
-├── docker-compose.yml       # 容器编排 (工作目录挂载到 /work)
+├── Makefile                 # 所有操作入口 (默认原生工具链; ENGINE=docker 走容器)
+├── docker-compose.yml       # 容器编排 (仅 macOS; 工作目录挂载到 /work)
 ├── docker/
-│   ├── Dockerfile           # 编译镜像: armhf 交叉工具链 + dtc/mkimage/mtools/mtd-utils...
+│   ├── Dockerfile           # 编译镜像 (仅 macOS 需要)
+│   ├── packages.txt         # ★ 编译依赖清单: Dockerfile 与 make deps 共用同一份
 │   └── entrypoint.sh
 ├── config/
 │   └── board.env            # ★ 板级配置: 工具链/源码版本/defconfig/DTS/SPI 类型与布局
@@ -81,15 +84,15 @@ t113-sdk/
 │   └── uboot-dts/sun8i-t113-s3.dts # U-Boot 板级 DTS (与内核 dtb 同名)
 ├── apps/                    # 用户应用 (每个子目录一个应用, 见 hello 示例)
 ├── patches/uboot/           # 对 U-Boot 源码的补丁 (sources/ 不入库, 编译前自动应用)
-├── scripts/                 # 容器内编译脚本 + 宿主机烧写脚本
+├── scripts/                 # 构建脚本 (原生与容器通用) + 宿主机烧写脚本
 ├── sources/                 # 拉取的源码 (make fetch 后出现, 不被 git 跟踪)
 ├── out/                     # 全部编译产物
 │   ├── images/t113-sdcard.img   # SD 卡镜像
 │   ├── images/t113-spi.img      # SPI flash 镜像 (NOR 或 NAND)
 │   └── ...
-├── docs/vendor-sdk.md       # 全志官方 SDK (Longan/Tina) 的 Docker 用法
+├── docs/vendor-sdk.md       # 全志官方 SDK (Longan/Tina) 的编译用法
 ├── docs/spi-nand.md         # SPI NAND (W25N02KVZEIR) 说明: 布局/烧写/启动链路
-└── docs/windows.md          # Windows (WSL2 + Docker Engine) 安装 / 烧写指南
+└── docs/windows.md          # Windows (WSL2 原生 Ubuntu, 不用 Docker) 安装 / 烧写指南
 ```
 
 > `patches/uboot/0001-sunxi-spl-spi-nand.patch` 是让 **SPL 能从 SPI NAND 读 U-Boot**
@@ -245,13 +248,20 @@ U-Boot 启动顺序 = SPI flash 系统优先, 失败才回落到 SD 卡 distro �
 
 ```bash
 make all MIRROR=cn            # 用 TUNA/Gitee 镜像拉源码 (默认 cn)
-make image APT_MIRROR=mirrors.tuna.tsinghua.edu.cn   # apt 走国内源
-PROXY=http://192.168.5.2:7890 make fetch            # 下载走宿主机代理 (colima)
-make image PROXY=http://192.168.5.2:7890            # 构建镜像时也走代理
-# Docker Desktop 用 http://host.docker.internal:7890; Linux 容器用 http://127.0.0.1:7890
+JOBS=8 make all               # 限制并行任务数 (默认 nproc; 内存少时很有用)
 KERNEL_VER=6.12.30 make fetch # 临时换内核版本 (tarball 版本号)
 KERNEL_DTS=board make kernel  # 临时切换板级 DTS (auto/board/<名字>)
 SPI_FLASH_TYPE=nand make pack-spi   # 临时切 flash 类型 (nand 默认 / nor)
+ENGINE=docker make all        # 强制走容器 (仅 macOS 需要; Windows 请用原生)
+```
+
+macOS 容器相关变量:
+
+```bash
+make image APT_MIRROR=mirrors.tuna.tsinghua.edu.cn   # 构建镜像时 apt 走国内源
+PROXY=http://192.168.5.2:7890 make fetch            # 下载走宿主机代理 (colima)
+make image PROXY=http://192.168.5.2:7890            # 构建镜像时也走代理
+# Docker Desktop 用 http://host.docker.internal:7890; Linux 容器用 http://127.0.0.1:7890
 ```
 
 板级相关变量都在 `config/board.env` 里改。
@@ -268,16 +278,27 @@ SPI_FLASH_TYPE=nand make pack-spi   # 临时切 flash 类型 (nand 默认 / nor)
 
 ## 常见问题
 
-- **`docker: command not found`**: `brew install docker docker-compose && colima start`
-- **clone 慢/失败**: `make fetch MIRROR=cn` (内核走 TUNA tarball, 已实测 ~3MB/s),
-  或手动把 `linux-x.y.z.tar.xz` 放到 `downloads/` 后重跑
-- **权限问题** (容器里生成的文件属主异常): colima 虚拟机用户映射导致,
-  `sudo chown -R $(id -u):$(id -g) out sources` 即可
+- **`缺少编译工具: dtc mkimage arm-linux-gnueabihf-gcc ...`**: 还没装依赖 ——
+  Linux / WSL2 执行 `make deps` (包清单 `docker/packages.txt`), 然后 `make check`
+- **内核编译 OOM / 太慢**: `JOBS=8 make all` 限制并行度 (默认取 `nproc`),
+  并给 WSL 分足内存 (见 [docs/windows.md](docs/windows.md) 第 4 节)
+- **`make fetch` 报"文件系统大小写不敏感...覆盖丢失"**: 项目在 Windows 盘
+  (`/mnt/d`) 上 —— 源码树里有仅大小写不同的文件名, 解压时会互相覆盖。把项目移到
+  WSL 原生盘 (`cd ~ && git clone ...`) 即可; 确要强行继续用
+  `ALLOW_CASE_INSENSITIVE=1 make fetch`
+- **clone 慢/失败/卡住**: `make fetch` 会在镜像之间自动回退 (某个镜像停滞
+  3 分钟无数据就换下一个, 可用 `GIT_STALL_PROBES`/`GIT_STALL_INTERVAL` 调);
+  国内镜像不好用时 `MIRROR=official make fetch` 直接走官方源 (实测 cdn.kernel.org /
+  source.denx.de 可达性更好); 也可以手动把 `linux-x.y.z.tar.xz` 放到 `downloads/` 后重跑
 - **串口没输出**: T113-S3 调试口是 UART3 (PB6/PB7), 确认接的是这两个引脚;
   若参考板 DTS 模式 (`KERNEL_DTS=auto`) 不匹配你的板子, 改用 board 模式
 - **内核版本**: 改 `config/board.env` 的 `KERNEL_VER` (TUNA
   `kernel/v6.x/` 目录下的 6.6/6.12 LTS 均含 T113 DTS)
-- **buildroot 打 ext4 报 xattr 错误**: 与 busybox rootfs 同理 (virtiofs 不支持
-  xattr), 把 buildroot 输出目录放到容器本地: `make shell` 后
-  `make -C sources/buildroot O=/tmp/br-output ...`, 或直接在 Linux 服务器上跑
-- **colima 资源不足**: `colima stop && colima start --cpu 6 --memory 10 --disk 80`
+- **`docker: command not found`** (仅 macOS 容器模式): `brew install docker
+  docker-compose && colima start`
+- **权限问题** (macOS 容器产出属主异常): colima 用户映射导致,
+  `sudo chown -R $(id -u):$(id -g) out sources`
+- **buildroot 打 ext4 报 xattr 错误** (仅 macOS 容器): virtiofs 不支持 xattr,
+  `make shell` 后把 buildroot 输出目录放到容器本地:
+  `make -C sources/buildroot O=/tmp/br-output ...`
+- **colima 资源不足** (仅 macOS): `colima stop && colima start --cpu 6 --memory 10 --disk 80`

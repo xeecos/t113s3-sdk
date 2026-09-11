@@ -7,8 +7,8 @@ set -euo pipefail
 require_file "${OUT_DIR}/busybox/busybox"
 
 log "组装最小根文件系统 -> ${ROOTFS_DIR}"
-# 注意: mke2fs -d 不支持从 virtiofs (/work) 读 xattr,
-# 因此在容器本地文件系统暂存, 仅把最终 ext4 产物放回 /work/out
+# 注意: mke2fs -d 不支持从 virtiofs (/work, 仅 Docker Desktop 的挂载方式) 读 xattr,
+# 因此在本地文件系统暂存, 只把最终 ext4 产物放回 out/ (原生构建同样走这里, 无副作用)
 STAGE_DIR="/tmp/t113-rootfs"
 rm -rf "${STAGE_DIR}"
 ROOTFS_DIR="${STAGE_DIR}"

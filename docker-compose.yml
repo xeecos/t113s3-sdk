@@ -1,3 +1,5 @@
+# 容器编排 —— 仅 macOS (或显式 ENGINE=docker) 使用。
+# Windows / Linux 走原生工具链, 不需要这个文件 (见 README 与 docs/windows.md)。
 services:
   t113-build:
     build:

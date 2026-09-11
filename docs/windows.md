@@ -1,23 +1,19 @@
-# Windows (WSL2 + Docker Engine) 使用指南
+# Windows (WSL2 原生 Ubuntu) 使用指南
 
-本项目的编译全部发生在 Docker **Linux 容器**内 (`docker compose run --rm
-t113-build`), 与宿主系统无关。因此在 Windows 上不需要 Docker Desktop, 推荐做法是:
+本项目的编译需要 Linux 工具链 (armhf 交叉编译器 + dtc/mkimage/mtools/mtd-utils)。
+Windows 下的做法是在 **WSL2 的 Ubuntu 里原生构建** —— 不需要 Docker: 依赖用
+`make deps` 装一次, 之后 `make` 系列命令和在 Linux 上完全一样。
 
 ```
 Windows 11/10
-   └─ WSL2 (Ubuntu, 推荐 22.04/24.04)          ← 运行 make / docker
-        └─ Docker Engine (装在 WSL 内)          ← 编译容器在此执行
-             └─ 项目源码 (放 /mnt/d 或 WSL 原生盘均可)
+  └─ WSL2 (Ubuntu 22.04+, 推荐 24.04)      ← 在这里跑 make
+       └─ 项目源码 (强烈建议放 WSL 原生盘 ~/)  ← 源码与编译产物都在这里
 ```
 
-装好之后的使用体验与 Linux 完全一致: 在 WSL 终端里进项目目录执行
-`make image` / `make all` / `make flash` 即可。烧写 SD 卡时, 用开源工具
-`usbipd-win` 把读卡器透传给 WSL。
-
-> 如果你更想用 Docker Desktop (图形界面), 仓库也完全兼容 —— 只需把下面的
-> Docker 安装步骤换成 [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/),
-> 并在 Docker Desktop 的 Settings → Resources → WSL Integration 里打开你的发行版,
-> 其余步骤不变。
+> **为什么不用 Docker**: 容器只是把同一套 apt 包装进镜像, 对 Windows 没有额外好处 ——
+> 容器的 bind mount 依然落在 Windows 盘上, 既没有性能优势, 也解决不了第 3 节的大小写
+> 问题; 反而多一层 daemon 要维护。容器路径只保留给 macOS (macOS 没有 Linux 工具链)。
+> 需要时可用 `ENGINE=docker` 强制走容器, 但 Windows 下的官方路径就是原生。
 
 ---
 
@@ -36,65 +32,65 @@ wsl -l -v
 # 若 VERSION 显示 1:  wsl --set-version Ubuntu 2
 ```
 
-进入 Ubuntu (默认用户为 `wsl --set-default Ubuntu` 后可只用 `wsl`):
+进入 Ubuntu:
 
 ```bash
 sudo apt update && sudo apt -y upgrade
 ```
 
-**systemd**: WSL 需要 systemd 才能把 Docker 当作服务管理。较新的 WSL 默认已开启,
-可先验证, 未开启则手动打开:
+> 本项目**不需要 systemd** (不装服务、不跑 daemon)。如果你因为别的原因已经开了
+> `/etc/wsl.conf` 的 `systemd=true`, 也不影响构建。
+
+## 2. 安装编译依赖
+
+编译依赖 (arm 交叉工具链、dtc/mkimage、mtools/mtd-utils、qemu-user-static 等)
+在 `docker/packages.txt` 里, 一条命令装完:
 
 ```bash
-systemctl is-system-running --no-pager    # 能返回 running/degraded 即已开启
-
-# 若报 "System has not been booted with systemd":
-sudo sh -c 'printf "[boot]\nsystemd=true\n" > /etc/wsl.conf'
-# 然后在 Windows 执行:  wsl --shutdown   再重新进入
+cd <项目目录>
+make deps            # = apt-get install 清单里的全部包 (需要 sudo 密码)
+make check           # 校验工具链是否齐全
+make info            # 查看 gcc / dtc / mkimage 版本
 ```
 
-## 2. 在 WSL 里安装 Docker Engine
-
-官方一键脚本 (在 WSL 终端内):
+`make deps` 本身要用 make, WSL 的 Ubuntu 默认自带; 若提示 `make: command not found`,
+先 `sudo apt install -y make`, 或等效地手动装:
 
 ```bash
-curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker "$USER"        # 之后免 sudo 用 docker (重新登录 wsl 生效)
-sudo systemctl enable --now docker
-docker run --rm hello-world             # 验证
-docker compose version                  # 需 compose v2 插件 (官方脚本自带)
-sudo apt install -y make                # Makefile 入口 (Ubuntu 默认不带)
+sudo apt-get update
+sudo apt-get install -y $(grep -vE '^[[:space:]]*(#|$)' docker/packages.txt | tr '\n' ' ')
 ```
 
-> 没有 systemd 的老环境: 用 `sudo service docker start` 代替
-> `systemctl enable --now docker`。
-> apt 慢的话可先配清华源, 项目内已支持 `MIRROR=cn` / `APT_MIRROR=...` 走国内镜像。
+apt 慢的话可先配清华源。
 
-## 3. 放置项目 (两种方式)
+## 3. 项目放哪里: 强烈建议放 WSL 原生盘 (ext4)
 
-仓库已在 Windows 盘时 (如 `D:\Projects\t113s3-sdk`), WSL 里对应
-`/mnt/d/Projects/t113s3-sdk`, 直接进去跑即可:
+**两个理由**:
+
+1. **大小写敏感性**。WSL 挂载的 Windows 盘 (`/mnt/d`) 是 NTFS, 大小写不敏感, 而
+   源码树里存在仅大小写不同的文件名 —— 内核 `include/uapi/linux/netfilter/` 下就有
+   `xt_CONNMARK.h` 与 `xt_connmark.h`、`xt_MARK.h` 与 `xt_mark.h` 等。在 `/mnt/d` 上
+   解压/检出时它们会落成同一个文件, **静默少掉一个**, 之后表现为"莫名缺少头文件"。
+   `make fetch` 会检测这种情况并直接报错 (git clone 自己也会警告 `paths have collided`)。
+2. **性能**。内核这种几万个小文件的编译, 走 9p 挂载的 Windows 盘比 ext4 慢好几倍。
 
 ```bash
-cd /mnt/d/Projects/t113s3-sdk
-make image && make all
+cd ~ && git clone <你的仓库地址> t113s3-sdk && cd t113s3-sdk
 ```
 
-- **优点**: Windows 侧 (资源管理器 / VSCode / 你现有的 Git) 直接访问, 无需迁移。
-- **缺点**: 代码在 NTFS (`/mnt/d`) 上, 内核这种大量小文件的编译会比 WSL 原生盘
-  慢一些。
+Windows 侧访问这份代码, 两种方式都很好用:
 
-追求性能的话, 克隆到 WSL 原生盘 (ext4) 编译, 用 `\\wsl$\Ubuntu\...` 或
-VSCode Remote-WSL 从 Windows 侧访问:
+- **VSCode Remote-WSL**: 装 "WSL" 扩展, 在 WSL 里进项目目录执行 `code .`
+- **资源管理器**: 地址栏输入 `\\wsl$\Ubuntu-22.04\home\<用户名>\t113s3-sdk`
 
-```bash
-cd ~ && git clone https://你的仓库地址 t113s3-sdk && cd t113s3-sdk
-```
+如果你把项目留在 `/mnt/d` (例如 `D:\Projects\t113s3-sdk`), 构建前需要接受上面的
+风险: `ALLOW_CASE_INSENSITIVE=1 make fetch` 可以跳过检测, 但编译可能因缺文件失败,
+而且速度慢。**放到 `~` 下是唯一推荐的做法。**
 
 **换行符**: 仓库已带 `.gitattributes` 强制脚本保持 LF, 在 WSL 里克隆/使用无需任何
-处理。只有一种情况需要手动修复 —— 仓库是被 **Windows Git 在加入
-`.gitattributes` 之前**克隆的 (`core.autocrlf=true` 会把 `.sh` 检出成 CRLF,
-进容器会报 `$'\r': command not found` 之类的错):
+处理。只有一种情况需要手动修复 —— 仓库是被 **Windows Git 在加入 `.gitattributes`
+之前**克隆的 (`core.autocrlf=true` 会把 `.sh` 检出成 CRLF, 报
+`$'\r': command not found`):
 
 ```bash
 cd <仓库目录>
@@ -104,29 +100,33 @@ git add --renormalize . && git status    # 确认改动后提交一次即可
 
 ## 4. 构建
 
-进 WSL 终端, 与 README 一致:
-
 ```bash
-make image    # 构建编译镜像 (首次约 5 分钟)
-make all      # 拉源码 + uboot/kernel/rootfs + 打包 SD/SPI 镜像
-make shell    # 进入容器调试
+make deps      # 首次装依赖 (第 2 节)
+make all       # 拉源码 + uboot/kernel/rootfs + 打包 SD/SPI 镜像
+make shell     # 需要手动 menuconfig / 单步调试时进 shell (工具链变量已载入)
 ```
 
-建议给 WSL 足够资源。在 `%UserProfile%\.wslconfig` 里配置后执行
-`wsl --shutdown` 生效:
+也可以分步: `make fetch` / `make uboot` / `make kernel` / `make busybox` /
+`make apps` / `make rootfs` / `make pack` / `make pack-spi`。
+
+**内存与并行度**: WSL 默认只分给虚拟机一半内存, 而 `JOBS` 默认取 `nproc`
+(宿主机全部逻辑核), 全核并行编内核有 OOM 风险 —— 内存不足时用 `JOBS` 限制:
+
+```bash
+JOBS=8 make all              # 限制并行任务数 (临时)
+```
+
+想给 WSL 更多资源, 在 `%UserProfile%\.wslconfig` 里配置后执行 `wsl --shutdown` 生效:
 
 ```ini
 [wsl2]
-memory=10GB
-processors=6
+memory=24GB
+processors=16
 swap=8GB
 ```
 
-/mnt/d 权限异常 (容器以 root 生成的 out/ 属主怪异) 时:
-
-```bash
-sudo chown -R $(id -u):$(id -g) out sources downloads
-```
+> 宿主 32 核 / 32G 的话, 别照搬网上的 `memory=10GB` + `processors=6`: 核多内存少
+> 反而更容易 OOM。要么给足内存 (比如 24GB), 要么用 `JOBS=` 把并行度压下来。
 
 ## 5. 烧写 SD 卡 (usbipd USB 透传)
 
@@ -159,9 +159,8 @@ cd <项目目录>
 make flash DEV=/dev/sda            # 设备名以 lsblk 为准
 ```
 
-`make flash` 会自动按宿主系统选择脚本 —— WSL (Linux) 走
-`scripts/flash-linux.sh`, 它会在需要时自动 `sudo`, 并带防呆检查:
-拒绝分区设备、拒绝非可移动磁盘、拒绝已挂载设备、校验镜像 ≤ 卡容量。
+`make flash` 在 WSL (Linux) 里会走 `scripts/flash-linux.sh`, 需要时自动 `sudo`,
+并带防呆检查: 拒绝分区设备、拒绝非可移动磁盘、拒绝已挂载设备、校验镜像 ≤ 卡容量。
 确实要强制时用 `FORCE=1 make flash DEV=/dev/sda`。
 
 ### 5.3 烧完回收设备
@@ -172,8 +171,8 @@ usbipd detach --busid <BUSID>      # Windows 管理员 PowerShell
 
 > **不用透传的替代方案**: 直接在 Windows 侧用图形工具烧, 效果等同 dd ——
 > 下载/使用 Rufus 或 balenaEtcher / Win32DiskImager, 选择镜像
-> `out\images\t113-sdcard.img` 写入 SD 卡。仓库在 WSL 原生盘时, 该文件路径为
-> `\\wsl$\Ubuntu\home\<用户名>\t113s3-sdk\out\images\t113-sdcard.img`。
+> `out\images\t113-sdcard.img` 写入 SD 卡。项目在 WSL 原生盘时, 该文件路径为
+> `\\wsl$\Ubuntu-22.04\home\<用户名>\t113s3-sdk\out\images\t113-sdcard.img`。
 >
 > FEL (USB 免卡救砖/烧 SPI) 同样在 WSL2 里做: `usbipd attach` 透传后
 > `sudo apt install sunxi-tools && sunxi-fel spiflash-write 0 t113-spi.img`。
@@ -183,15 +182,16 @@ usbipd detach --busid <BUSID>      # Windows 管理员 PowerShell
 | 现象 | 处理 |
 |------|------|
 | `make: command not found` | WSL 里 `sudo apt install -y make` |
-| `permission denied ... docker.sock` | `sudo usermod -aG docker $USER` 后重开 wsl 终端 (或 `newgrp docker`) |
-| `Cannot connect to the Docker daemon` | 检查 systemd: `systemctl status docker`; 未开 systemd 用 `sudo service docker start`, 并见第 1 节 wsl.conf 配置 |
+| `缺少编译工具: dtc mkimage arm-linux-gnueabihf-gcc ...` | `make deps` (包清单 `docker/packages.txt`) |
+| `make fetch` 报"文件系统大小写不敏感...覆盖丢失" 或 git clone 警告 `paths have collided` | 项目在 `/mnt/d` 上, 按第 3 节移到 WSL 原生盘 (`cd ~ && git clone ...`); 确要强行继续用 `ALLOW_CASE_INSENSITIVE=1 make fetch` |
+| 内核编译 OOM / 太慢 | `JOBS=8 make all` 限并行 + 调 `%UserProfile%\.wslconfig`; 源码放 WSL 原生盘 |
+| `make help` 提示 "当前是 Windows 原生 shell" | 在 Git Bash/PowerShell 里跑了 make。构建只能在 WSL 终端里做 |
 | 脚本报 `$'\r': command not found` | 仓库被 Windows Git (autocrlf) 检出过, 按第 3 节 renormalize |
-| `container name "t113-build" already in use` | `docker rm -f t113-build` (正常情况下 `run --rm` 会自动清理) |
 | WSL 显示 VERSION 1 | `wsl --set-version Ubuntu 2` (需管理员 PowerShell, 重启 WSL) |
-| 内核编译 OOM / 太慢 | 调 `%UserProfile%\.wslconfig` 资源并 `wsl --shutdown`; 源码放 WSL 原生盘 |
 | usbipd attach 报错 | 用管理员 PowerShell; 先 `usbipd bind`; `wsl --update` 后重试 |
-| /mnt/d 下文件属主/权限怪异 | 见第 4 节 chown; 或干脆把项目迁到 WSL 原生盘 |
-| 拉源码慢/失败 | `make all MIRROR=cn`, 见 README 常见问题 |
+| `/mnt/d` 下 `out/` 属主/权限怪异 | 只有混用过容器才会出现 (容器以 root 写入): `sudo chown -R $(id -u):$(id -g) out sources downloads`; 原生构建不会有这个问题 |
+| 拉源码慢/失败/卡住 | `make fetch` 会自动换镜像 (停滞 3 分钟无数据即放弃当前镜像); 国内镜像不好用时 `MIRROR=official make fetch` |
 
 > 需要编译全志官方 SDK (Longan/Tina, 仅支持 x86_64) 时, WSL2 的 amd64 Ubuntu
-> 天然满足硬件要求 —— 在 WSL2 里执行即可, 具体步骤见 [docs/vendor-sdk.md](vendor-sdk.md)。
+> 天然满足硬件要求 —— 同样**在 WSL2 里原生执行**即可, 具体步骤见
+> [docs/vendor-sdk.md](vendor-sdk.md)。

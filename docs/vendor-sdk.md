@@ -1,13 +1,35 @@
-# 在 Docker 里使用全志官方 T113-S3 SDK (Longan / Tina Linux)
+# 编译全志官方 T113-S3 SDK (Longan / Tina Linux)
 
 全志官方 SDK (Longan 为 buildroot 系, Tina 为 OpenWrt 系) 的构建工具链**只支持
-x86_64 Linux**。在 Apple Silicon Mac 上有两个选择:
+x86_64 Linux**, 所以能不能原生编译只看宿主架构:
 
-> Windows 用户: WSL2 (amd64 Ubuntu) 本身就满足 x86_64 Linux 要求, Docker 环境
-> 装好后直接照本页步骤执行即可, 无需任何模拟。Docker 安装见
-> [windows.md](windows.md)。
+| 宿主 | 做法 |
+|------|------|
+| Linux x86_64 | 原生, 直接用 |
+| **Windows (WSL2 的 Ubuntu, amd64)** | **原生, 直接用** —— 不需要 Docker |
+| Apple Silicon Mac | 没有 x86_64 Linux, 只能容器 + QEMU 模拟 (方案 A) 或借服务器 (方案 B) |
 
-## 方案 A: x86_64 容器 + QEMU 模拟 (本机可用, 慢)
+## 方案 0: x86_64 原生 (Linux / WSL2, 推荐)
+
+WSL2 里的 Ubuntu 天然满足 x86_64 Linux 要求, 无需任何模拟:
+
+```bash
+# 1. 装依赖 (与本仓库主线构建同一份清单; 官方 SDK 追加需要的 32 位库)
+make deps
+sudo apt install -y lib32z1 libncurses5 || true
+
+# 2. 解包官方 SDK 到 vendor/ (示例)
+mkdir -p vendor && tar -xaf longan-t113.tar.* -C vendor/
+
+# 3. 编译
+cd vendor/longan
+source build/envsetup.sh
+./build.sh menuconfig     # 选 board: t113_s3_xxx (具体名字以 SDK 为准)
+./build.sh                # 编译
+pack                      # 打包镜像 -> out/ 下的 *.img
+```
+
+## 方案 A: Apple Silicon 上跑 x86_64 容器 + QEMU 模拟 (本机可用, 慢)
 
 本机 colima 已带 `qemu-x86_64` 模拟器 (可用 `colima` 输出中的 emulators 确认)。
 
@@ -36,7 +58,8 @@ pack                      # 打包镜像 -> out/ 下的 *.img
 
 ## 方案 B: x86_64 服务器远程编译 (推荐, 快)
 
-把本目录的 `docker/` 拷到任意 x86_64 Linux 服务器:
+x86_64 Linux 服务器上原生跑即可 (装依赖用 `make deps`, 同方案 0)。想用容器隔离的话
+把本仓库的 `docker/` 拷过去:
 
 ```bash
 docker build -t t113-sdk-builder:amd64 -f docker/Dockerfile docker/
