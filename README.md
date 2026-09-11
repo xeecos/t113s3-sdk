@@ -18,7 +18,7 @@ Linux / Windows(WSL2) 烧写脚本。
 | 宿主 | Linux 或 Windows 的 WSL2 (Ubuntu 22.04+): 原生构建, `make deps` 一次装齐依赖 (清单见 `docker/packages.txt`), **不需要 Docker** |
 | Docker | 仅 macOS 需要 (没有 Linux 工具链时自动启用): [colima](https://github.com/abiosoft/colima) + `brew install docker docker-compose`, 或 Docker Desktop |
 | 磁盘 | ≥ 30 GB 空闲 (源码 ~2 GB + 编译产物 ~5 GB, 镜像另有余量) |
-| 网络 | 拉取源码; 国内网络已内置 TUNA/Gitee 镜像 (`MIRROR=cn`) |
+| 网络 | 拉取源码; git 源走 GitHub 官方镜像, 内核 tarball 走 TUNA (`MIRROR=cn` 默认); GitHub 慢时挂代理 `make proxy-hint` |
 
 macOS (colima) 用户建议给足资源 (宿主 8 核 16G 为例):
 
@@ -247,7 +247,7 @@ U-Boot 启动顺序 = SPI flash 系统优先, 失败才回落到 SD 卡 distro �
 ## 常用变量
 
 ```bash
-make all MIRROR=cn            # 用 TUNA/Gitee 镜像拉源码 (默认 cn)
+make all MIRROR=cn            # 拉源码: git 源用 GitHub 官方镜像 + 内核走 TUNA (默认 cn)
 JOBS=8 make all               # 限制并行任务数 (默认 nproc; 内存少时很有用)
 make proxy-hint               # 拉源码慢时: 打印宿主代理地址 (WSL 里 127.0.0.1 到不了 Windows)
 PROXY=http://172.29.160.1:7890 make fetch   # 通过宿主机代理下载 (地址以 proxy-hint 为准)
@@ -288,10 +288,11 @@ make image PROXY=http://192.168.5.2:7890            # 构建镜像时也走代�
   (`/mnt/d`) 上 —— 源码树里有仅大小写不同的文件名, 解压时会互相覆盖。把项目移到
   WSL 原生盘 (`cd ~ && git clone ...`) 即可; 确要强行继续用
   `ALLOW_CASE_INSENSITIVE=1 make fetch`
-- **clone 慢/失败/卡住**: `make fetch` 会在镜像之间自动回退 (某个镜像停滞
-  3 分钟无数据就换下一个, 可用 `GIT_STALL_PROBES`/`GIT_STALL_INTERVAL` 调);
-  国内镜像不好用时 `MIRROR=official make fetch` 直接走官方源 (实测 cdn.kernel.org /
-  source.denx.de 可达性更好); 也可以手动把 `linux-x.y.z.tar.xz` 放到 `downloads/` 后重跑
+- **clone 慢/失败/卡住**: git 源是 GitHub 官方镜像 (国内一般要挂代理:
+  `make proxy-hint` 拿地址后 `PROXY=http://<宿主网关>:7890 make fetch`); `make fetch`
+  本身会在镜像之间自动回退 (某个镜像停滞 3 分钟无数据就换下一个, 阈值可用
+  `GIT_STALL_PROBES`/`GIT_STALL_INTERVAL` 调), `MIRROR=official` 换 denx.de / gitlab.com;
+  也可以手动把 `linux-x.y.z.tar.xz` 放到 `downloads/` 后重跑
 - **串口没输出**: T113-S3 调试口是 UART3 (PB6/PB7), 确认接的是这两个引脚;
   若参考板 DTS 模式 (`KERNEL_DTS=auto`) 不匹配你的板子, 改用 board 模式
 - **内核版本**: 改 `config/board.env` 的 `KERNEL_VER` (TUNA

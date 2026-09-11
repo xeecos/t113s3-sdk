@@ -87,18 +87,19 @@ case_dup_verify() {
 }
 
 # ---------- 源码仓库 (按 MIRROR 选择) ----------
-# 注: 清华镜像站只镜像了 kernel tarball 目录, 没有 git 服务
-# (mirrors.tuna.tsinghua.edu.cn/git/... 一律 404), 别再加回来。
-# 任一镜像克隆停滞会自动换下一个 (见 fetch-sources.sh 的停滞探测),
-# 想跳过国内镜像直接用官方源: MIRROR=official make fetch
+# git 源统一用 GitHub 官方镜像 (gitee.com/mirrors 已不可用; 清华镜像站只镜像了
+# kernel tarball 目录, 没有 git 服务 —— mirrors.tuna.tsinghua.edu.cn/git/... 一律 404),
+# 官方源作为兜底。任一镜像克隆停滞会自动换下一个 (见 fetch-sources.sh 的停滞探测)。
+# GitHub 在国内通常要挂代理: make proxy-hint 拿到地址后
+#   PROXY=http://<宿主网关>:7890 make fetch
 case "${MIRROR}" in
   cn)
     UBOOT_GIT_LIST=(
-      "https://gitee.com/mirrors/u-boot.git"
+      "https://github.com/u-boot/u-boot.git"
       "https://source.denx.de/u-boot/u-boot.git"
     )
     BUILDROOT_GIT_LIST=(
-      "https://gitee.com/mirrors/buildroot.git"
+      "https://github.com/buildroot/buildroot.git"
       "https://gitlab.com/buildroot.org/buildroot.git"
     )
     KERNEL_TARBALL_LIST=(
@@ -109,11 +110,11 @@ case "${MIRROR}" in
   *)
     UBOOT_GIT_LIST=(
       "https://source.denx.de/u-boot/u-boot.git"
-      "https://gitee.com/mirrors/u-boot.git"
+      "https://github.com/u-boot/u-boot.git"
     )
     BUILDROOT_GIT_LIST=(
       "https://gitlab.com/buildroot.org/buildroot.git"
-      "https://gitee.com/mirrors/buildroot.git"
+      "https://github.com/buildroot/buildroot.git"
     )
     KERNEL_TARBALL_LIST=(
       "https://cdn.kernel.org/pub/linux/kernel/v6.x"

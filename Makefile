@@ -15,7 +15,8 @@ APT_MIRROR ?= archive.ubuntu.com
 # 宿主机代理 (下载慢/失败时): make <目标> PROXY=http://127.0.0.1:7890
 #   原生 (Linux/WSL2) 直接继承本机环境变量; colima 用 192.168.5.2, Docker Desktop 用 http://host.docker.internal:7890
 PROXY ?=
-NO_PROXY ?= localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,.tuna.tsinghua.edu.cn,.tsinghua.edu.cn,.gitee.com
+# 不用代理的域名 (本地 + 国内内核镜像直连更快; GitHub 等国际源走代理)
+NO_PROXY ?= localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,.tuna.tsinghua.edu.cn,.tsinghua.edu.cn
 
 # ---------- 构建引擎 ----------
 #   native = 本机原生工具链 (Linux / WSL2 的 Ubuntu, 默认)

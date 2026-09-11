@@ -109,12 +109,13 @@ make shell     # 需要手动 menuconfig / 单步调试时进 shell (工具链�
 也可以分步: `make fetch` / `make uboot` / `make kernel` / `make busybox` /
 `make apps` / `make rootfs` / `make pack` / `make pack-spi`。
 
-**拉源码慢/失败 (走代理)**: U-Boot/buildroot 是 git clone, 国际线路不好时会很慢甚至卡住。
+**拉源码慢/失败 (走代理)**: U-Boot/buildroot 源码是 git clone, 源用 GitHub 官方镜像,
+国内一般要挂代理, 否则会很慢甚至卡住。
 
 ```bash
 make proxy-hint                      # 打印宿主代理地址 (WSL 里别用 127.0.0.1)
 PROXY=http://172.29.160.1:7890 make fetch   # 地址以 proxy-hint 输出为准
-MIRROR=official make fetch           # 不挂代理时换官方源
+MIRROR=official make fetch           # 换官方源 (denx.de / gitlab.com)
 ```
 
 - **WSL2 默认是 NAT 网络**: 代理跑在 Windows 上时, WSL 里的 `127.0.0.1` 指向 WSL

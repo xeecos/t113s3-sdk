@@ -14,7 +14,7 @@ services:
     volumes:
       - .:/work
     environment:
-      # 源码镜像: official | cn (中国网络推荐 cn, 走 TUNA/Gitee)
+      # 源码镜像: official | cn (默认 cn: git 源用 GitHub 官方镜像, 内核走 TUNA)
       - MIRROR=${MIRROR:-official}
       - KERNEL_VER=${KERNEL_VER:-}
       - UBOOT_REF=${UBOOT_REF:-}
