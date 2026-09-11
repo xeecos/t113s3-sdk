@@ -43,8 +43,16 @@ mcopy -i "${BOOT_IMG}" "${IMG_DIR}/boot.scr"   ::boot.scr
 mcopy -i "${BOOT_IMG}" "${IMG_DIR}/zImage"     ::zImage
 mcopy -i "${BOOT_IMG}" "${IMG_DIR}/${BOARD_DTS_NAME}.dtb" ::"${BOARD_DTS_NAME}.dtb"
 # SPI flash 更新脚本 (U-Boot 下 source 它即可把 zImage/dtb 刷入 SPI)
-if [ -f "${IMG_DIR}/spi-update.scr" ]; then
-  mcopy -i "${BOOT_IMG}" "${IMG_DIR}/spi-update.scr" ::spi-update.scr
+for scr in spi-update.scr spi-nand-update.scr; do
+  if [ -f "${IMG_DIR}/${scr}" ]; then
+    mcopy -i "${BOOT_IMG}" "${IMG_DIR}/${scr}" ::"${scr}"
+  fi
+done
+# U-Boot 本体 (u-boot-sunxi-with-spl.bin): 给 spi-nand-update.cmd 里
+# "更新 uboot 分区" 那段用 —— 首次给空片烧 flash 或换 U-Boot 时需要
+if [ -f "${OUT_DIR}/uboot/u-boot-sunxi-with-spl.bin" ]; then
+  mcopy -i "${BOOT_IMG}" "${OUT_DIR}/uboot/u-boot-sunxi-with-spl.bin" \
+        ::u-boot-sunxi-with-spl.bin
 fi
 
 # ---- 3. 拼接整卡镜像 ----

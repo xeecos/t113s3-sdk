@@ -47,17 +47,62 @@
 	status = "okay";
 };
 
-/* SPI NOR flash -> /dev/mtd0 (内核已开 MTD_SPI_NOR) */
+/* ============================================================
+ * SPI flash: Winbond W25N02KVZEIR (SPI NAND, 2Gbit / 256MB)
+ *   页 2048B + OOB 128B, 擦除块 128KB -> 分区必须按 128KB 对齐
+ *   分区表必须与 config/board.env 的 SPI_*_SIZE 一致,
+ *   scripts/pack-spi.sh 打包前会逐项校验 (不一致直接报错)
+ *   分区顺序 = mtd0..mtd3, rootfs 是第 4 个 -> root=/dev/mtdblock3
+ *
+ *   换回 SPI NOR 板: 用下面注释里的 jedec,spi-nor 节点替换 spi-nand 节点,
+ *   并把 config/board.env 的 SPI_FLASH_TYPE 改成 nor (布局也随之变化)
+ * ============================================================ */
 &spi0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&spi0_pins>;
 	status = "okay";
 
 	flash@0 {
-		compatible = "jedec,spi-nor";
+		compatible = "spi-nand";
 		reg = <0>;
 		spi-max-frequency = <40000000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "uboot";
+				reg = <0x0000000 0x0100000>;
+			};
+
+			partition@100000 {
+				label = "dtb";
+				reg = <0x0100000 0x0040000>;
+			};
+
+			partition@140000 {
+				label = "kernel";
+				reg = <0x0140000 0x1000000>;
+			};
+
+			partition@1140000 {
+				label = "rootfs";
+				reg = <0x1140000 0x0eec0000>;
+			};
+		};
 	};
+
+	/* SPI NOR 板 (16/32MB, 布局见 SPI_FLASH_TYPE=nor):
+	 * flash@0 {
+	 *	compatible = "jedec,spi-nor";
+	 *	reg = <0>;
+	 *	spi-max-frequency = <40000000>;
+	 * };
+	 */
 };
 
 /* 千兆以太网 (RMII/RGMII 视 PHY 而定) */

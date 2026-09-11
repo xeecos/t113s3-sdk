@@ -90,3 +90,65 @@ auto_kernel_dts() {
   [ -n "${dts}" ] || die "内核树中未找到 sun8i-t113*.dts, 请在 config/board.env 手动设置 KERNEL_DTS"
   basename "${dts}" .dts
 }
+
+# ---------- SPI flash 布局 ----------
+# 由 config/board.env 的 SPI_{UBOOT,DTB,KERNEL}_SIZE 推导各分区偏移
+# 设置: SPI_OFF_UBOOT / SPI_OFF_DTB / SPI_OFF_KERNEL / SPI_OFF_ROOTFS / SPI_ROOTFS_SIZE
+spi_layout() {
+  SPI_OFF_UBOOT=0
+  if [ "${SPI_FLASH_TYPE}" = "nand" ]; then
+    # SPI NAND: 各分区连续排布, 偏移天然落在 128KB 擦除块边界上
+    SPI_OFF_DTB=$(( SPI_UBOOT_SIZE ))
+    SPI_OFF_KERNEL=$(( SPI_OFF_DTB + SPI_DTB_SIZE ))
+  else
+    # SPI NOR: 沿用历史布局 —— dtb 之后留一段空隙 (0x90000~0x100000),
+    # U-Boot 环境变量就存在这里 (offset 0xF0000, 见 configs/uboot/t113_s3.config),
+    # 所以 kernel 必须从 0x100000 开始, 不能改成紧跟 dtb 的连续排布。
+    SPI_OFF_DTB=0x80000
+    SPI_OFF_KERNEL=0x100000
+    (( SPI_UBOOT_SIZE <= SPI_OFF_DTB )) \
+      || die "SPI NOR 的 uboot 分区不能超过 0x80000 (512K), 否则会压到 dtb 分区: SPI_UBOOT_SIZE=${SPI_UBOOT_SIZE}"
+    (( SPI_OFF_DTB + SPI_DTB_SIZE <= SPI_OFF_KERNEL )) \
+      || die "SPI NOR 的 dtb 分区 (0x80000 + ${SPI_DTB_SIZE}) 会压到 kernel 分区 (0x100000)"
+  fi
+  SPI_OFF_ROOTFS=$(( SPI_OFF_KERNEL + SPI_KERNEL_SIZE ))
+  SPI_ROOTFS_SIZE=$(( SPI_FLASH_SIZE_MB * 1024 * 1024 - SPI_OFF_ROOTFS ))
+}
+
+# 从板级 DTS 的 partitions 节点读出 "label 起始偏移 大小" (没有分区节点时不输出)
+dts_partitions() { # $1 = dts 文件
+  [ -f "$1" ] || return 0
+  awk '
+    /label[[:space:]]*=[[:space:]]*"/ {
+      line = $0; sub(/^[^"]*"/, "", line); sub(/".*$/, "", line); label = line
+    }
+    /[^a-z-]reg[[:space:]]*=[[:space:]]*</ {
+      line = $0; sub(/^.*</, "", line); sub(/>.*$/, "", line)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+      n = split(line, v, /[[:space:]]+/)
+      if (label != "" && n >= 2) printf "%s %s %s\n", label, v[1], v[2]
+    }
+  ' "$1"
+}
+
+# 校验板级 DTS 的分区表与 config/board.env 推导出的布局一致
+# (两者不一致时镜像会被写到错误偏移, 所以这里直接报错)
+check_dts_partitions() { # $1 = dts 文件
+  local dts="$1" parsed label off size exp_off exp_size
+  [ -f "${dts}" ] || return 0
+  parsed="$(dts_partitions "${dts}")"
+  [ -n "${parsed}" ] || return 0
+
+  while read -r label off size; do
+    case "${label}" in
+      uboot)  exp_off="${SPI_OFF_UBOOT}";  exp_size="${SPI_UBOOT_SIZE}"  ;;
+      dtb)    exp_off="${SPI_OFF_DTB}";    exp_size="${SPI_DTB_SIZE}"    ;;
+      kernel) exp_off="${SPI_OFF_KERNEL}"; exp_size="${SPI_KERNEL_SIZE}" ;;
+      rootfs) exp_off="${SPI_OFF_ROOTFS}"; exp_size="${SPI_ROOTFS_SIZE}" ;;
+      *)      continue ;;
+    esac
+    if [ "$(( off ))" != "$(( exp_off ))" ] || [ "$(( size ))" != "$(( exp_size ))" ]; then
+      die "$(basename "${dts}") 的分区 '${label}' 是 $(printf '0x%x' "$(( off ))")+$(printf '0x%x' "$(( size ))") , 与 config/board.env 推出的 $(printf '0x%x' "$(( exp_off ))")+$(printf '0x%x' "$(( exp_size ))") 不一致 — 两边要一起改 (切换 SPI_FLASH_TYPE 时, board/dts 与 board/uboot-dts 里的 flash 节点和分区也要同步换)"
+    fi
+  done <<< "${parsed}"
+}

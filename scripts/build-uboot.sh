@@ -6,6 +6,24 @@ set -euo pipefail
 
 [ -f "${UBOOT_SRC}/Makefile" ] || die "U-Boot 源码不存在, 先运行 make fetch"
 
+# ---- 应用项目补丁 ----
+# sources/ 不入库 (make fetch 会重新 clone), 所以对 U-Boot 的改动放在 patches/uboot/*.patch,
+# 每次编译前自动应用; 已经应用过的会跳过, 不会重复打。
+PATCH_DIR="${ROOT_DIR}/patches/uboot"
+if [ -d "${PATCH_DIR}" ]; then
+  for p in "${PATCH_DIR}"/*.patch; do
+    [ -f "${p}" ] || continue
+    if git -C "${UBOOT_SRC}" apply --check --reverse "${p}" >/dev/null 2>&1; then
+      log "补丁已应用: $(basename "${p}")"
+    elif git -C "${UBOOT_SRC}" apply --check "${p}" >/dev/null 2>&1; then
+      log "应用补丁: $(basename "${p}")"
+      git -C "${UBOOT_SRC}" apply "${p}" || die "补丁应用失败: ${p}"
+    else
+      die "$(basename "${p}") 既不能应用也不是已应用状态 —— U-Boot 源码可能被改过, 建议 make distclean 后重新 make fetch"
+    fi
+  done
+fi
+
 UBOOT_CFG="$(auto_uboot_defconfig)"
 UBOOT_OUT="${OUT_DIR}/uboot"
 mkdir -p "${UBOOT_OUT}"
@@ -21,6 +39,10 @@ if [ "${UBOOT_DTS}" = "board" ]; then
     log "注册板级 DT 到 U-Boot dts Makefile"
     echo "dtb-y += ${BDT_NAME}.dtb" >> "${UBOOT_SRC}/arch/arm/dts/Makefile"
   fi
+  # U-Boot 的 mtd read/write <分区名> 依赖 DT 里的 partitions 节点,
+  # 分区表必须与内核 DTS / config/board.env 一致
+  spi_layout
+  check_dts_partitions "${BDT_DTS}"
 fi
 
 log "U-Boot defconfig: ${UBOOT_CFG}"

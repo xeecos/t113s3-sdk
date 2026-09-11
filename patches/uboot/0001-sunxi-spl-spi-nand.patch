@@ -1,0 +1,463 @@
+diff --git a/arch/arm/include/asm/arch-sunxi/spl.h b/arch/arm/include/asm/arch-sunxi/spl.h
+index 14944a20..31a41f03 100644
+--- a/arch/arm/include/asm/arch-sunxi/spl.h
++++ b/arch/arm/include/asm/arch-sunxi/spl.h
+@@ -16,6 +16,8 @@
+ #define SUNXI_BOOTED_FROM_NAND	1
+ #define SUNXI_BOOTED_FROM_MMC2	2
+ #define SUNXI_BOOTED_FROM_SPI	3
++/* T1xx: 从 SPI 控制器上的 NAND 启动时 BROM 上报的启动源 */
++#define SUNXI_BOOTED_FROM_SPINAND	4
+ #define SUNXI_BOOTED_FROM_MMC0_HIGH	0x10
+ #define SUNXI_BOOTED_FROM_MMC2_HIGH	0x12
+ 
+diff --git a/arch/arm/mach-sunxi/board.c b/arch/arm/mach-sunxi/board.c
+index 701899ee..259e9634 100644
+--- a/arch/arm/mach-sunxi/board.c
++++ b/arch/arm/mach-sunxi/board.c
+@@ -278,6 +278,13 @@ static int sunxi_get_boot_source(void)
+ uint32_t sunxi_get_boot_device(void)
+ {
+ 	int boot_source = sunxi_get_boot_source();
++	/*
++	 * 低 4 位是启动设备, 高位是 "high" 标志 (eMMC boot 分区上报 0x10/0x12,
++	 * T1xx 的 SPI NAND 也可能上报 0x14), 所以这里只看低 4 位;
++	 * 0x10/0x12 需要的额外扇区偏移由 board_spl_mmc_get_uboot_raw_sector()
++	 * 单独用原始值处理, 不受这里的掩码影响。
++	 */
++	int boot_dev = boot_source & 0xF;
+ 
+ 	/*
+ 	 * When booting from the SD card or NAND memory, the "eGON.BT0"
+@@ -295,18 +302,23 @@ uint32_t sunxi_get_boot_device(void)
+ 	 * binary over USB. If it is found, it determines where SPL was
+ 	 * read from.
+ 	 */
+-	switch (boot_source) {
+-	case SUNXI_INVALID_BOOT_SOURCE:
++	if (boot_source == SUNXI_INVALID_BOOT_SOURCE)
+ 		return BOOT_DEVICE_BOARD;
++
++	switch (boot_dev) {
+ 	case SUNXI_BOOTED_FROM_MMC0:
+-	case SUNXI_BOOTED_FROM_MMC0_HIGH:
+ 		return BOOT_DEVICE_MMC1;
+ 	case SUNXI_BOOTED_FROM_NAND:
+ 		return BOOT_DEVICE_NAND;
+ 	case SUNXI_BOOTED_FROM_MMC2:
+-	case SUNXI_BOOTED_FROM_MMC2_HIGH:
+ 		return BOOT_DEVICE_MMC2;
+ 	case SUNXI_BOOTED_FROM_SPI:
++	case SUNXI_BOOTED_FROM_SPINAND:
++		/*
++		 * SPI NOR 与 SPI NAND 挂在同一个 SPI 控制器上, 具体是哪种芯片
++		 * 由 spl_spi_load_image() 读 ID 判断 (见 spl_spi_sunxi.c),
++		 * 所以这里统一返回 BOOT_DEVICE_SPI, 不新增启动设备类型。
++		 */
+ 		return BOOT_DEVICE_SPI;
+ 	}
+ 
+diff --git a/arch/arm/mach-sunxi/spl_spi_sunxi.c b/arch/arm/mach-sunxi/spl_spi_sunxi.c
+index 5f72e809..a77dfd28 100644
+--- a/arch/arm/mach-sunxi/spl_spi_sunxi.c
++++ b/arch/arm/mach-sunxi/spl_spi_sunxi.c
+@@ -11,6 +11,7 @@
+ #include <asm/io.h>
+ #include <linux/bitops.h>
+ #include <linux/delay.h>
++#include <linux/errno.h>
+ #include <linux/libfdt.h>
+ #include <sunxi_gpio.h>
+ 
+@@ -283,77 +284,178 @@ static void spi0_deinit(void)
+ 
+ #define SPI_READ_MAX_SIZE 60 /* FIFO size, minus 4 bytes of the header */
+ 
+-static void sunxi_spi0_read_data(u8 *buf, u32 addr, u32 bufsize,
+-				 ulong spi_ctl_reg,
+-				 ulong spi_ctl_xch_bitmask,
+-				 ulong spi_fifo_reg,
+-				 ulong spi_tx_reg,
+-				 ulong spi_rx_reg,
+-				 ulong spi_bc_reg,
+-				 ulong spi_tc_reg,
+-				 ulong spi_bcc_reg)
++static void sunxi_spi0_xfer(const u8 *txbuf, u32 txlen, u8 *rxbuf, u32 rxlen,
++			    ulong spi_ctl_reg,
++			    ulong spi_ctl_xch_bitmask,
++			    ulong spi_fifo_reg,
++			    ulong spi_tx_reg,
++			    ulong spi_rx_reg,
++			    ulong spi_bc_reg,
++			    ulong spi_tc_reg,
++			    ulong spi_bcc_reg)
+ {
+-	writel(4 + bufsize, spi_bc_reg); /* Burst counter (total bytes) */
+-	writel(4, spi_tc_reg);           /* Transfer counter (bytes to send) */
++	u32 i;
++
++	writel(txlen + rxlen, spi_bc_reg); /* Burst counter (total bytes) */
++	writel(txlen, spi_tc_reg);         /* Transfer counter (bytes to send) */
+ 	if (spi_bcc_reg)
+-		writel(4, spi_bcc_reg);  /* SUN6I also needs this */
++		writel(txlen, spi_bcc_reg);  /* SUN6I also needs this */
+ 
+-	/* Send the Read Data Bytes (03h) command header */
+-	writeb(0x03, spi_tx_reg);
+-	writeb((u8)(addr >> 16), spi_tx_reg);
+-	writeb((u8)(addr >> 8), spi_tx_reg);
+-	writeb((u8)(addr), spi_tx_reg);
++	for (i = 0; i < txlen; i++)
++		writeb(*txbuf++, spi_tx_reg);
+ 
+ 	/* Start the data transfer */
+ 	setbits_le32(spi_ctl_reg, spi_ctl_xch_bitmask);
+ 
+ 	/* Wait until everything is received in the RX FIFO */
+-	while ((readl(spi_fifo_reg) & 0x7F) < 4 + bufsize)
++	while ((readl(spi_fifo_reg) & 0x7F) < txlen + rxlen)
+ 		;
+ 
+-	/* Skip 4 bytes */
+-	readl(spi_rx_reg);
++	/* Skip the bytes we sent (the chip drives MISO only for the rest) */
++	for (i = 0; i < txlen; i++)
++		readb(spi_rx_reg);
+ 
+ 	/* Read the data */
+-	while (bufsize-- > 0)
+-		*buf++ = readb(spi_rx_reg);
++	while (rxlen-- > 0)
++		*rxbuf++ = readb(spi_rx_reg);
++}
++
++static void spi0_xfer(const u8 *txbuf, u32 txlen, u8 *rxbuf, u32 rxlen)
++{
++	uintptr_t base = spi0_base_address();
+ 
+-	/* tSHSL time is up to 100 ns in various SPI flash datasheets */
+-	udelay(1);
++	if (is_sun6i_gen_spi()) {
++		sunxi_spi0_xfer(txbuf, txlen, rxbuf, rxlen,
++				base + SUN6I_SPI0_TCR,
++				SUN6I_TCR_XCH,
++				base + SUN6I_SPI0_FIFO_STA,
++				base + SUN6I_SPI0_TXD,
++				base + SUN6I_SPI0_RXD,
++				base + SUN6I_SPI0_MBC,
++				base + SUN6I_SPI0_MTC,
++				base + SUN6I_SPI0_BCC);
++	} else {
++		sunxi_spi0_xfer(txbuf, txlen, rxbuf, rxlen,
++				base + SUN4I_SPI0_CTL,
++				SUN4I_CTL_XCH,
++				base + SUN4I_SPI0_FIFO_STA,
++				base + SUN4I_SPI0_TX,
++				base + SUN4I_SPI0_RX,
++				base + SUN4I_SPI0_BC,
++				base + SUN4I_SPI0_TC,
++				0);
++	}
+ }
+ 
+-static void spi0_read_data(void *buf, u32 addr, u32 len)
++#if IS_ENABLED(CONFIG_SPL_SPINAND_SUPPORT)
++/*
++ * SPI NAND 的最小实现: 内部实现参考了 John Watts (jookia) 的上游 RFC
++ * "Support SPI NAND booting on the T113"。
++ *
++ * 读一页要分两步: Page Data Read (13h, 3 字节页地址) 把整页搬进芯片内部
++ * cache, 再用 Read From Cache (03h, 2 字节列地址 + 1 字节 dummy) 读出来。
++ * 地址宽度与内核 drivers/mtd/nand/spi/core.c 里的 SPINAND_*_OP 一致。
++ *
++ * 说明: 这里不处理坏块 (片内 ECC 在上电后默认开启, 由芯片自己纠错)。
++ * uboot 分区在 flash 偏移 0 处, 只要该区域没有出厂坏块就能启动。
++ */
++
++/* 读状态寄存器 (0xC0), bit0 = OIP, 等待芯片退出忙状态 */
++static int spi0_nand_wait_ready(void)
++{
++	u8 cmd[2] = { 0x0f, 0xc0 };
++	u8 status = 0;
++	int i;
++
++	/* 一页最多几百微秒 (W25N02KV tRDP 典型 60us), 这里给 2ms 余量 */
++	for (i = 0; i < 2000; i++) {
++		spi0_xfer(cmd, 2, &status, 1);
++		if (!(status & 0x1))
++			return 0;
++		udelay(1);
++	}
++
++	return -ETIMEDOUT;
++}
++
++static void spi0_nand_reset(void)
++{
++	const u8 cmd = 0xff; /* RESET */
++
++	spi0_xfer(&cmd, 1, NULL, 0);
++	udelay(1000);
++}
++
++/* Page Data Read: 把 page 指定的页读进芯片 cache */
++static int spi0_nand_switch_page(u32 page)
++{
++	u8 cmd[4];
++
++	cmd[0] = 0x13;
++	cmd[1] = (u8)(page >> 16);
++	cmd[2] = (u8)(page >> 8);
++	cmd[3] = (u8)(page);
++
++	spi0_xfer(cmd, 4, NULL, 0);
++
++	return spi0_nand_wait_ready();
++}
++
++/*
++ * 读 ID 判断总线上挂的是 SPI NAND 还是 SPI NOR。
++ *
++ * SPI NAND (Winbond W25N01GV/W25N02KV/W25N04KV 等) 的 ID 是 EF AA xx,
++ * 而且要在 9Fh 之后先发一个 dummy 字节才输出; SPI NOR 的 ID 是 EF 40 xx,
++ * 9Fh 之后直接输出。两者时序差一个字节, 所以这里读 4 个字节后找
++ * "EF AA" 这对值 —— 不管有没有 dummy 都能对上, 而 NOR 不会出现 AA。
++ *
++ * 其他厂家的 SPI NAND 需要在这里补 ID 匹配 (内核用的完整表在
++ * drivers/mtd/nand/spi/*.c)。
++ */
++static bool spi0_probe_spinand(void)
++{
++	const u8 cmd = 0x9f;
++	u8 id[4] = { 0 };
++	u32 i;
++
++	spi0_xfer(&cmd, 1, id, sizeof(id));
++
++	for (i = 0; i + 1 < sizeof(id); i++)
++		if (id[i] == 0xef && id[i + 1] == 0xaa)
++			return true;
++
++	return false;
++}
++#endif /* CONFIG_SPL_SPINAND_SUPPORT */
++
++static void spi0_read_data(void *buf, u32 addr, u32 len, u32 addr_len)
+ {
+ 	u8 *buf8 = buf;
+ 	u32 chunk_len;
+-	uintptr_t base = spi0_base_address();
++	u8 txbuf[4];
+ 
+ 	while (len > 0) {
+ 		chunk_len = len;
++
++		/* Configure the Read Data Bytes (03h) command header */
++		txbuf[0] = 0x03;
++		if (addr_len == 3) {
++			txbuf[1] = (u8)(addr >> 16);
++			txbuf[2] = (u8)(addr >> 8);
++			txbuf[3] = (u8)(addr);
++		} else { /* SPI NAND: 2 字节列地址 + 1 字节 dummy */
++			txbuf[1] = (u8)(addr >> 8);
++			txbuf[2] = (u8)(addr);
++			txbuf[3] = 0;
++		}
++
+ 		if (chunk_len > SPI_READ_MAX_SIZE)
+ 			chunk_len = SPI_READ_MAX_SIZE;
+ 
+-		if (is_sun6i_gen_spi()) {
+-			sunxi_spi0_read_data(buf8, addr, chunk_len,
+-					     base + SUN6I_SPI0_TCR,
+-					     SUN6I_TCR_XCH,
+-					     base + SUN6I_SPI0_FIFO_STA,
+-					     base + SUN6I_SPI0_TXD,
+-					     base + SUN6I_SPI0_RXD,
+-					     base + SUN6I_SPI0_MBC,
+-					     base + SUN6I_SPI0_MTC,
+-					     base + SUN6I_SPI0_BCC);
+-		} else {
+-			sunxi_spi0_read_data(buf8, addr, chunk_len,
+-					     base + SUN4I_SPI0_CTL,
+-					     SUN4I_CTL_XCH,
+-					     base + SUN4I_SPI0_FIFO_STA,
+-					     base + SUN4I_SPI0_TX,
+-					     base + SUN4I_SPI0_RX,
+-					     base + SUN4I_SPI0_BC,
+-					     base + SUN4I_SPI0_TC,
+-					     0);
+-		}
++		spi0_xfer(txbuf, 4, buf8, chunk_len);
++
++		/* tSHSL time is up to 100 ns in various SPI flash datasheets */
++		udelay(1);
+ 
+ 		len  -= chunk_len;
+ 		buf8 += chunk_len;
+@@ -361,47 +463,126 @@ static void spi0_read_data(void *buf, u32 addr, u32 len)
+ 	}
+ }
+ 
+-static ulong spi_load_read(struct spl_load_info *load, ulong sector,
+-			   ulong count, void *buf)
++static ulong spi_load_read_nor(struct spl_load_info *load, ulong sector,
++			       ulong count, void *buf)
++{
++	spi0_read_data(buf, sector, count, 3);
++
++	return count;
++}
++
++#if IS_ENABLED(CONFIG_SPL_SPINAND_SUPPORT)
++static ulong spi_load_read_nand(struct spl_load_info *load, ulong sector,
++				ulong count, void *buf)
+ {
+-	spi0_read_data(buf, sector, count);
++	const ulong pagesize = CONFIG_SPL_SPINAND_PAGE_SIZE;
++	ulong remain = count;
++
++	while (remain) {
++		ulong count_in_page = pagesize - (sector % pagesize);
++		ulong current_page = sector / pagesize;
++
++		if (count_in_page > remain)
++			count_in_page = remain;
++
++		if (spi0_nand_switch_page(current_page) != 0)
++			return 0;
++
++		spi0_read_data(buf, sector % pagesize, count_in_page, 2);
++
++		remain -= count_in_page;
++		sector += count_in_page;
++		buf += count_in_page;
++	}
+ 
+ 	return count;
+ }
++#endif /* CONFIG_SPL_SPINAND_SUPPORT */
+ 
+ /*****************************************************************************/
+ 
++/*
++ * 选出读 flash 的方式: 总线上是 SPI NAND 还是 SPI NOR。
++ *
++ * BROM 对 SPI NAND 上报的启动源在不同 SoC 上可能是 SPI(3) 也可能是
++ * SPI NAND(4), 而 board.c 只区分到 "SPI 控制器" 这一层, 所以这里直接读
++ * 芯片 ID 判断: Winbond SPI NAND = EF AA xx, SPI NOR = EF 40 xx。
++ * 好处是无论 BROM 报 3 还是 4、板上装的是 NAND 还是 NOR, 都能自动选对。
++ */
++static void spi_load_setup(struct spl_load_info *load)
++{
++	spl_load_init(load, spi_load_read_nor, NULL, 1);
++
++#if IS_ENABLED(CONFIG_SPL_SPINAND_SUPPORT)
++	if (spi0_probe_spinand()) {
++		debug("SPI NAND detected\n");
++		spi0_nand_reset();
++		load->read = spi_load_read_nand;
++		return;
++	}
++	debug("SPI NOR detected\n");
++#endif
++}
++
++/* 擦除态 (全 0xff) 不能当成裸 u-boot.bin 跳进去 */
++static bool spi_image_is_plausible(const u8 *buf, u32 len)
++{
++	u32 i;
++
++	for (i = 0; i < len; i++)
++		if (buf[i] != 0xff)
++			return true;
++
++	return false;
++}
++
+ static int spl_spi_load_image(struct spl_image_info *spl_image,
+ 			      struct spl_boot_device *bootdev)
+ {
+ 	int ret = 0;
+ 	struct legacy_img_hdr *header;
++	struct spl_load_info load;
+ 	uint32_t load_offset = sunxi_get_spl_size();
+ 
+ 	header = (struct legacy_img_hdr *)CONFIG_TEXT_BASE;
+ 	load_offset = max_t(uint32_t, load_offset, CONFIG_SYS_SPI_U_BOOT_OFFS);
+ 
+ 	spi0_init();
++	spi_load_setup(&load);
++
++	/*
++	 * flash 上的布局是 [SPL][64 字节 uImage 头][u-boot.bin]:
++	 * CONFIG_SYS_SPI_U_BOOT_OFFS(0x8000) 处就是那个 uImage 头, 先读回来解析;
++	 * 如果该处不是合法镜像 (空片/读失败), 再按裸 u-boot.bin 兜底。
++	 */
++	if (load.read(&load, load_offset, sizeof(*header), (void *)header) == 0) {
++		ret = -EINVAL;
++		goto out;
++	}
+ 
+-	spi0_read_data((void *)header, load_offset, 0x40);
+-
+-        if (IS_ENABLED(CONFIG_SPL_LOAD_FIT) &&
++	if (IS_ENABLED(CONFIG_SPL_LOAD_FIT) &&
+ 		image_get_magic(header) == FDT_MAGIC) {
+-		struct spl_load_info load;
+-
+ 		debug("Found FIT image\n");
+-		spl_load_init(&load, spi_load_read, NULL, 1);
+ 		ret = spl_load_simple_fit(spl_image, &load,
+ 					  load_offset, header);
+ 	} else {
++		if (image_get_magic(header) != IH_MAGIC &&
++		    !spi_image_is_plausible((const u8 *)header, sizeof(*header))) {
++			/* 读回来的是空片或垃圾, 报错而不是跳进去 */
++			ret = -EINVAL;
++			goto out;
++		}
++
+ 		ret = spl_parse_image_header(spl_image, bootdev, header);
+ 		if (ret)
+-			return ret;
++			goto out;
+ 
+-		spi0_read_data((void *)spl_image->load_addr,
+-			       load_offset, spl_image->size);
++		if (load.read(&load, load_offset, spl_image->size,
++			      (void *)spl_image->load_addr) == 0)
++			ret = -EINVAL;
+ 	}
+ 
++out:
+ 	spi0_deinit();
+ 
+ 	return ret;
+diff --git a/common/spl/Kconfig b/common/spl/Kconfig
+index 240543c9..8b00b00b 100644
+--- a/common/spl/Kconfig
++++ b/common/spl/Kconfig
+@@ -937,6 +937,22 @@ config SPL_MUSB_NEW
+ 	  the drivers in drivers/usb/musb-new as part of an SPL build. The
+ 	  old drivers are in drivers/usb/musb.
+ 
++config SPL_SPINAND_SUPPORT
++	bool "Support SPINAND flash"
++	help
++	  Enable support for SPINAND flash in SPL. This lets SPL load
++	  U-Boot from a SPI NAND chip with a minimal reader that talks to
++	  the SPI controller directly (no MTD/UBI stack inside SPL).
++	  Currently implemented for Allwinner SoCs, see SPL_SPI_SUNXI and
++	  arch/arm/mach-sunxi/spl_spi_sunxi.c.
++
++config SPL_SPINAND_PAGE_SIZE
++	hex "SPINAND chip page size"
++	depends on SPL_SPINAND_SUPPORT
++	help
++	  Number of data bytes in one page of the SPINAND chip on the
++	  board, not including the OOB area (W25N02KV: 2048 = 0x800).
++
+ config SPL_NAND_SUPPORT
+ 	bool "Support NAND flash"
+ 	select SPL_LOAD_BLOCK

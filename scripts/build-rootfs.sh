@@ -54,7 +54,8 @@ echo
 echo "Welcome to T113-S3 (busybox minimal rootfs)"
 echo
 
-# ---- 全 NOR 模式 (root=/dev/mtdblock3): SD 卡 p1 作为用户数据盘 -> /data ----
+# ---- 全 flash 模式 (root=/dev/mtdblock3, SPI NOR 或 SPI NAND 都是这个根设备):
+#      SD 卡 p1 作为用户数据盘 -> /data
 # SD 启动模式 (/dev/mmcblk0p2 是系统盘) 不挂载, 避免误挂系统分区
 if grep -q mtdblock /proc/cmdline; then
   if [ -b /dev/mmcblk0 ]; then

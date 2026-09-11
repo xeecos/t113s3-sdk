@@ -1,12 +1,13 @@
-# SPI Flash 更新脚本 (U-Boot 下运行)
-# 用途: 从 SD 卡 boot 分区 (FAT32) 读取 zImage/dtb, 烧入 SPI flash
+# SPI NOR 更新脚本 (U-Boot 下运行)
+# 用途: 从 SD 卡 boot 分区 (FAT32) 读取 zImage/dtb, 烧入 SPI NOR
 #
 # 用法: 插入本环境打出的 SD 卡, U-Boot 命令行执行:
 #   mmc dev 0
 #   fatload mmc 0:1 ${scriptaddr} spi-update.scr
 #   source ${scriptaddr}
 #
-# SPI flash 布局 (scripts/pack-spi.sh 一致):
+# 只用于 SPI_FLASH_TYPE=nor; SPI NAND 用 board/spi-nand-update.cmd (走 mtd 命令,
+# 因为 sf 命令只认 NOR)。偏移由 scripts/pack-spi.sh 的 nor 布局决定:
 #   0x000000  U-Boot (不在此更新, 见 README "更新 U-Boot")
 #   0x080000  dtb      (64K)
 #   0x100000  zImage   (12M)
@@ -30,4 +31,4 @@ sf write ${kernel_addr_r} 0x100000 ${filesize}
 # sf erase 0xD00000 ${filesize}
 # sf write ${ramdisk_addr_r} 0xD00000 ${filesize}
 
-echo "SPI flash 更新完成"
+echo "SPI NOR 更新完成"

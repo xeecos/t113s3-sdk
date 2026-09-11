@@ -36,7 +36,8 @@ help:
 	@echo "  make rootfs           组装最小根文件系统 (busybox)"
 	@echo "  make rootfs-buildroot 用 Buildroot 构建完整根文件系统"
 	@echo "  make pack             打包 SD 卡镜像 out/images/t113-sdcard.img"
-	@echo "  make pack-spi         打包 SPI NOR 镜像 out/images/t113-spi.img"
+	@echo "  make pack-spi         打包 SPI flash 镜像 out/images/t113-spi.img"
+	@echo "                        (NOR / SPI NAND 由 config/board.env 的 SPI_FLASH_TYPE 决定)"
 	@echo "  make all              fetch + uboot + kernel + busybox + apps + rootfs + pack"
 	@echo
 	@echo "  make flash DEV=/dev/diskN   烧写 SD 卡 (macOS)"
@@ -46,6 +47,7 @@ help:
 	@echo "Windows 宿主: 在 WSL2 中运行本项目 (安装与烧写见 docs/windows.md)"
 	@echo
 	@echo "常用变量: MIRROR=cn|official  APT_MIRROR=<镜像>  PROXY=<宿主机代理>  KERNEL_VER=  UBOOT_REF="
+	@echo "          SPI_FLASH_TYPE=nand|nor  SPI_FLASH_SIZE_MB=<容量>  KERNEL_DTS=board|auto"
 
 APT_MIRROR ?= archive.ubuntu.com
 image:
