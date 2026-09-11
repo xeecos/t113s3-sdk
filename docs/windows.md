@@ -109,6 +109,23 @@ make shell     # 需要手动 menuconfig / 单步调试时进 shell (工具链�
 也可以分步: `make fetch` / `make uboot` / `make kernel` / `make busybox` /
 `make apps` / `make rootfs` / `make pack` / `make pack-spi`。
 
+**拉源码慢/失败 (走代理)**: U-Boot/buildroot 是 git clone, 国际线路不好时会很慢甚至卡住。
+
+```bash
+make proxy-hint                      # 打印宿主代理地址 (WSL 里别用 127.0.0.1)
+PROXY=http://172.29.160.1:7890 make fetch   # 地址以 proxy-hint 输出为准
+MIRROR=official make fetch           # 不挂代理时换官方源
+```
+
+- **WSL2 默认是 NAT 网络**: 代理跑在 Windows 上时, WSL 里的 `127.0.0.1` 指向 WSL
+  自己, 够不到 Windows 的代理, 要用**宿主网关地址** (`make proxy-hint` 会算出来,
+  一般是 `172.x.x.1`)。
+- 想让 `127.0.0.1` 直接可用, 可以在 `%UserProfile%\.wslconfig` 里加
+  `networkingMode=mirrored` (WSL 2.0+), `wsl --shutdown` 后 WSL 与 Windows 共享
+  localhost, 那时 `PROXY=http://127.0.0.1:7890` 就能用。
+- 某个镜像停滞 (3 分钟无数据) 会自动换下一个, 阈值可调:
+  `GIT_STALL_PROBES=4 GIT_STALL_INTERVAL=20 make fetch`。
+
 **内存与并行度**: WSL 默认只分给虚拟机一半内存, 而 `JOBS` 默认取 `nproc`
 (宿主机全部逻辑核), 全核并行编内核有 OOM 风险 —— 内存不足时用 `JOBS` 限制:
 
@@ -190,7 +207,7 @@ usbipd detach --busid <BUSID>      # Windows 管理员 PowerShell
 | WSL 显示 VERSION 1 | `wsl --set-version Ubuntu 2` (需管理员 PowerShell, 重启 WSL) |
 | usbipd attach 报错 | 用管理员 PowerShell; 先 `usbipd bind`; `wsl --update` 后重试 |
 | `/mnt/d` 下 `out/` 属主/权限怪异 | 只有混用过容器才会出现 (容器以 root 写入): `sudo chown -R $(id -u):$(id -g) out sources downloads`; 原生构建不会有这个问题 |
-| 拉源码慢/失败/卡住 | `make fetch` 会自动换镜像 (停滞 3 分钟无数据即放弃当前镜像); 国内镜像不好用时 `MIRROR=official make fetch` |
+| 拉源码慢/失败/卡住 | 挂代理: `make proxy-hint` 看地址后 `PROXY=http://<宿主网关>:7890 make fetch` (WSL 里 `127.0.0.1` 到不了 Windows 的代理); 或 `MIRROR=official make fetch` 换源 |
 
 > 需要编译全志官方 SDK (Longan/Tina, 仅支持 x86_64) 时, WSL2 的 amd64 Ubuntu
 > 天然满足硬件要求 —— 同样**在 WSL2 里原生执行**即可, 具体步骤见

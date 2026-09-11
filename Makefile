@@ -43,6 +43,13 @@ ifeq ($(ENGINE),native)
 RUN :=
 NATIVE_TOOLS := gcc make git wget patch flex bison bc perl file ccache dtc mkimage \
                 arm-linux-gnueabihf-gcc mke2fs debugfs mkfs.vfat mcopy sfdisk mksquashfs qemu-arm-static
+# 原生模式下 PROXY 直接作为环境变量传给脚本 (git / wget 都认 http_proxy)
+# WSL 里代理跑在 Windows 上时要用宿主网关地址: make proxy-hint 会打印出来
+ifneq ($(PROXY),)
+export http_proxy := $(PROXY)
+export https_proxy := $(PROXY)
+export no_proxy := $(NO_PROXY)
+endif
 else
 ifneq ($(PROXY),)
 RUN := docker compose run --rm -e http_proxy=$(PROXY) -e https_proxy=$(PROXY) -e no_proxy=$(NO_PROXY) t113-build
@@ -56,7 +63,7 @@ export MIRROR KERNEL_VER UBOOT_REF BUSYBOX_REF BOARD_DTS_NAME KERNEL_DTS KERNEL_
        UBOOT_DTS UBOOT_DEFCONFIG SPI_ROOTFS SPI_FLASH_TYPE SPI_FLASH_SIZE_MB \
        SPI_UBOOT_SIZE SPI_DTB_SIZE SPI_KERNEL_SIZE JOBS
 
-.PHONY: help check deps image shell info fetch uboot kernel busybox apps rootfs rootfs-buildroot pack pack-spi all clean distclean flash
+.PHONY: help check deps image shell info proxy-hint fetch uboot kernel busybox apps rootfs rootfs-buildroot pack pack-spi all clean distclean flash
 
 # 不带目标时打印帮助 (下面 BUILD_TARGETS 规则会抢走默认目标, 这里显式指定)
 .DEFAULT_GOAL := help
@@ -72,6 +79,7 @@ help:
 	@echo
 	@echo "  make deps             安装编译依赖 (Ubuntu / WSL2, 首次必做)"
 	@echo "  make check            检查编译依赖是否齐全"
+	@echo "  make proxy-hint       打印宿主代理地址 (拉源码慢时用)"
 	@echo "  make image            构建容器镜像 (仅 macOS / ENGINE=docker 需要)"
 	@echo "  make shell            进入编译 shell"
 	@echo "  make info             查看工具链版本"
@@ -154,6 +162,21 @@ info:
 	  echo "armhf gcc: $$(arm-linux-gnueabihf-gcc --version | head -1 | awk "{print \$$4}")"; \
 	  echo "dtc     : $$(dtc --version | awk "{print \$$2}")"; \
 	  echo "ccache  : $$(ccache --version | head -1 | awk "{print \$$3}")"'
+
+# WSL 里代理通常跑在 Windows 上, 这时要用宿主网关地址
+# (WSL2 是 NAT 网络, 127.0.0.1 指向 WSL 自己, 够不到 Windows 上的代理)
+proxy-hint:
+	@case "$(UNAME_S)" in \
+	  Linux) ip="$$(ip route show default 2>/dev/null | awk '{print $$3}')"; \
+	         if [ -n "$$ip" ]; then \
+	           echo "宿主代理用法 (WSL 内的 127.0.0.1 不是 Windows):"; \
+	           echo "  PROXY=http://$$ip:7890 make fetch"; \
+	         else echo "取不到默认网关, 请手动确认代理地址"; fi ;; \
+	  Darwin) echo "macOS: colima 用 http://192.168.5.2:7890, Docker Desktop 用 http://host.docker.internal:7890" ;; \
+	  *) echo "请在 WSL2 的 Ubuntu 里运行本项目 (见 docs/windows.md)" ;; \
+	esac
+	@echo "也可以直接: export http_proxy=http://<地址>:7890 https_proxy=\$$http_proxy"
+	@echo "国际源慢/卡时还可换源: MIRROR=official make fetch"
 
 fetch:
 	$(RUN) bash scripts/fetch-sources.sh

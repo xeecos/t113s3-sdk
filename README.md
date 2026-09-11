@@ -249,6 +249,8 @@ U-Boot 启动顺序 = SPI flash 系统优先, 失败才回落到 SD 卡 distro �
 ```bash
 make all MIRROR=cn            # 用 TUNA/Gitee 镜像拉源码 (默认 cn)
 JOBS=8 make all               # 限制并行任务数 (默认 nproc; 内存少时很有用)
+make proxy-hint               # 拉源码慢时: 打印宿主代理地址 (WSL 里 127.0.0.1 到不了 Windows)
+PROXY=http://172.29.160.1:7890 make fetch   # 通过宿主机代理下载 (地址以 proxy-hint 为准)
 KERNEL_VER=6.12.30 make fetch # 临时换内核版本 (tarball 版本号)
 KERNEL_DTS=board make kernel  # 临时切换板级 DTS (auto/board/<名字>)
 SPI_FLASH_TYPE=nand make pack-spi   # 临时切 flash 类型 (nand 默认 / nor)
