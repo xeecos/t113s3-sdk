@@ -114,8 +114,8 @@ case_dup_verify "${KERNEL_SRC}" "${K_DUPS}"
 echo
 log "源码就绪: $(ls "${SRC_DIR}" | tr '\n' ' ')"
 echo
-log "可用的 T113 相关 U-Boot defconfig:"
-find "${UBOOT_SRC}/configs" -maxdepth 1 -name '*_defconfig' | xargs -n1 basename | grep -i t113 || warn "(无)"
+log "U-Boot defconfig (UBOOT_DEFCONFIG=auto 会选到的候选, 按内容匹配):"
+grep -rli 't113' "${UBOOT_SRC}/configs" 2>/dev/null | xargs -r -n1 basename || warn "(无)"
 echo
 log "可用的 T113 相关内核 DTS:"
 find "${KERNEL_SRC}/arch/arm/boot/dts" \( -name 'sun8i-t113*.dts' -o -name 'sun8i-t113*.dtsi' \) ! -name '*.dtsi' -printf '%f\n' 2>/dev/null | sort
