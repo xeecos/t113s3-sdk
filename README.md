@@ -99,6 +99,8 @@ t113-sdk/
 > 的改动 (sunxi SPL SPI 驱动 + 启动源判断 + `SPL_SPINAND_SUPPORT` 配置项)。
 > `make uboot` 每次会先把它应用到 `sources/uboot`, 已应用过则跳过;
 > `make distclean` 之后再 `make fetch` 也不会丢。
+> 补丁若因 Windows 检出带上了 CRLF, 应用前会自动转成 LF 临时副本 (仓库内的
+> 补丁文件不动), `.gitattributes` 也已把 `*.patch` 强制为 LF。
 
 ## 用户应用 (apps)
 

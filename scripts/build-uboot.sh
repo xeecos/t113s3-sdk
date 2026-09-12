@@ -13,11 +13,20 @@ PATCH_DIR="${ROOT_DIR}/patches/uboot"
 if [ -d "${PATCH_DIR}" ]; then
   for p in "${PATCH_DIR}"/*.patch; do
     [ -f "${p}" ] || continue
-    if git -C "${UBOOT_SRC}" apply --check --reverse "${p}" >/dev/null 2>&1; then
+    # Windows (core.autocrlf) 检出的补丁可能是 CRLF, git apply 会当损坏补丁拒绝;
+    # 检测到就先转成 LF 临时副本再应用, 不动仓库里的文件
+    p_clean="${p}"
+    if grep -q $'\r' "${p}"; then
+      p_clean="${OUT_DIR}/$(basename "${p}").lf"
+      mkdir -p "${OUT_DIR}"
+      tr -d '\r' < "${p}" > "${p_clean}"
+      warn "补丁含 CRLF (Windows 检出所致), 已转 LF 后应用: $(basename "${p}")"
+    fi
+    if git -C "${UBOOT_SRC}" apply --check --reverse "${p_clean}" >/dev/null 2>&1; then
       log "补丁已应用: $(basename "${p}")"
-    elif git -C "${UBOOT_SRC}" apply --check "${p}" >/dev/null 2>&1; then
+    elif git -C "${UBOOT_SRC}" apply --check "${p_clean}" >/dev/null 2>&1; then
       log "应用补丁: $(basename "${p}")"
-      git -C "${UBOOT_SRC}" apply "${p}" || die "补丁应用失败: ${p}"
+      git -C "${UBOOT_SRC}" apply "${p_clean}" || die "补丁应用失败: ${p}"
     else
       die "$(basename "${p}") 既不能应用也不是已应用状态 —— U-Boot 源码可能被改过, 建议 make distclean 后重新 make fetch"
     fi

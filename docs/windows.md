@@ -87,8 +87,11 @@ Windows 侧访问这份代码, 两种方式都很好用:
 风险: `ALLOW_CASE_INSENSITIVE=1 make fetch` 可以跳过检测, 但编译可能因缺文件失败,
 而且速度慢。**放到 `~` 下是唯一推荐的做法。**
 
-**换行符**: 仓库已带 `.gitattributes` 强制脚本保持 LF, 在 WSL 里克隆/使用无需任何
-处理。只有一种情况需要手动修复 —— 仓库是被 **Windows Git 在加入 `.gitattributes`
+**换行符**: 仓库已带 `.gitattributes` 强制脚本/补丁/配置 (`Makefile` `.sh` `.cmd`
+`.dts` `.env` `.config` `.defconfig` `.patch` `.txt` 等) 保持 LF, 在 WSL 里克隆/使用
+无需任何处理。U-Boot 补丁即使已被 Windows Git 检出成 CRLF, `make uboot` 也会检测并
+自动转成 LF 临时副本后再应用 (只报一条警告, 仓库里的补丁文件不动)。
+只有一种情况需要手动修复 —— 仓库是被 **Windows Git 在加入 `.gitattributes`
 之前**克隆的 (`core.autocrlf=true` 会把 `.sh` 检出成 CRLF, 报
 `$'\r': command not found`):
 
