@@ -26,6 +26,11 @@ macOS (colima) 用户建议给足资源 (宿主 8 核 16G 为例):
 colima start --cpu 6 --memory 10 --disk 80
 ```
 
+> 也可以不用手动 `colima start`: macOS 上执行任何构建目标 (`make check/image/
+> shell/info/fetch/uboot/...`) 前都会自动检测 Docker, 没在运行就拉起 colima
+> (从未创建过时按上面的推荐配置创建) 或 Docker Desktop —— 见
+> [scripts/ensure-docker.sh](scripts/ensure-docker.sh)。
+
 ## 快速开始
 
 ```bash
@@ -300,7 +305,7 @@ make image PROXY=http://192.168.5.2:7890            # 构建镜像时也走代�
 - **内核版本**: 改 `config/board.env` 的 `KERNEL_VER` (TUNA
   `kernel/v6.x/` 目录下的 6.6/6.12 LTS 均含 T113 DTS)
 - **`docker: command not found`** (仅 macOS 容器模式): `brew install docker
-  docker-compose && colima start`
+  docker-compose` (make 会自动启动 colima)
 - **权限问题** (macOS 容器产出属主异常): colima 用户映射导致,
   `sudo chown -R $(id -u):$(id -g) out sources`
 - **buildroot 打 ext4 报 xattr 错误** (仅 macOS 容器): virtiofs 不支持 xattr,

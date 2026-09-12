@@ -64,7 +64,7 @@ export MIRROR KERNEL_VER UBOOT_REF BUSYBOX_REF BOARD_DTS_NAME KERNEL_DTS KERNEL_
        UBOOT_DTS UBOOT_DEFCONFIG SPI_ROOTFS SPI_FLASH_TYPE SPI_FLASH_SIZE_MB \
        SPI_UBOOT_SIZE SPI_DTB_SIZE SPI_KERNEL_SIZE JOBS
 
-.PHONY: help check deps image shell info proxy-hint fetch uboot kernel busybox apps rootfs rootfs-buildroot pack pack-spi all clean distclean flash
+.PHONY: help check deps docker-ok image shell info proxy-hint fetch uboot kernel busybox apps rootfs rootfs-buildroot pack pack-spi all clean distclean flash
 
 # 不带目标时打印帮助 (下面 BUILD_TARGETS 规则会抢走默认目标, 这里显式指定)
 .DEFAULT_GOAL := help
@@ -83,6 +83,7 @@ help:
 	@echo "  make proxy-hint       打印宿主代理地址 (拉源码慢时用)"
 	@echo "  make image            构建容器镜像 (仅 macOS / ENGINE=docker 需要)"
 	@echo "  make shell            进入编译 shell"
+	@echo "                        (macOS 容器模式会先自动拉起 Docker/colima)"
 	@echo "  make info             查看工具链版本"
 	@echo
 	@echo "  make fetch            拉取 U-Boot / Linux / busybox 源码"
@@ -107,8 +108,14 @@ help:
 	@echo "          SPI_FLASH_TYPE=nand|nor  SPI_FLASH_SIZE_MB=<容量>  APT_MIRROR=<apt 镜像>"
 	@echo "          ENGINE=docker|native  (强制切换构建引擎)"
 
+# Docker 守卫 (仅容器模式): daemon 没跑时自动拉起 colima / Docker Desktop。
+# 挂在 check/image/shell/info 前面, 因此 make all 的每一步构建都会先经过它;
+# daemon 已就绪时开销只有一次 docker info (~30ms)
+docker-ok:
+	@[ "$(ENGINE)" != docker ] || bash scripts/ensure-docker.sh
+
 # 依赖自检: 原生检查工具链是否齐全, 容器检查镜像是否已构建
-check:
+check: docker-ok
 ifeq ($(ENGINE),native)
 	@case "$(UNAME_S)" in \
 	  MINGW*|MSYS*|CYGWIN*) \
@@ -139,7 +146,7 @@ else
 endif
 
 # 容器镜像 (macOS); 原生模式下 make image 等价于装依赖
-image:
+image: docker-ok
 ifeq ($(ENGINE),native)
 	@$(MAKE) --no-print-directory deps
 else
@@ -148,6 +155,7 @@ else
 	  -t $(IMAGE) -f docker/Dockerfile docker/
 endif
 
+shell: docker-ok
 ifeq ($(ENGINE),native)
 shell:
 	@echo "原生模式: 在本项目目录开 shell (工具链变量已按 config/board.env 载入)"
@@ -157,7 +165,7 @@ shell:
 	$(RUN)
 endif
 
-info:
+info: docker-ok
 	$(RUN) bash -c 'echo "宿主   : $(UNAME_S) ($(ENGINE)) / $$(uname -m)"; \
 	  echo "host gcc: $$(gcc --version | head -1 | awk "{print \$$3}")"; \
 	  echo "armhf gcc: $$(arm-linux-gnueabihf-gcc --version | head -1 | awk "{print \$$4}")"; \
